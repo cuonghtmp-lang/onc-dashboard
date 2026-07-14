@@ -2420,15 +2420,23 @@ function lineVnd(i){ const l=DRAFT_LINES[i]; const fx=N(l.fx)>0?N(l.fx):N(DB.set
 function renderLineEditor(){
   const box=$('#lineEditor'); if(!box)return;
   const fxdef=N(DB.settings.exchangeRate);
-  const opts=c=>`<option value="">— sản phẩm —</option>`+DB.products.map(p=>`<option value="${esc(p.code)}" ${p.code===c?'selected':''}>${esc(p.code)} · ${esc(p.groupVI)}</option>`).join('');
-  let h=`<div class="linerow head"><div>Sản phẩm</div><div>SL</div><div>Giá USD</div><div>Tỷ giá mua</div><div>Giá VND</div><div>Tỷ giá thuế</div><div>Thuế NK (₫)</div><div>VAT NK (₫)</div><div>VAT NK %</div><div>Tên xuất HĐ</div><div></div></div>`;
+  const dlId='_dlProds';
+  const datalist=`<datalist id="${dlId}">${DB.products.map(p=>`<option value="${esc(p.code)}">`).join('')}</datalist>`;
+  let h=datalist+`<div class="linerow head"><div>Mã SP</div><div>SL</div><div>Giá USD</div><div>Tỷ giá mua</div><div>Giá VND</div><div>Tỷ giá thuế</div><div>Thuế NK (₫)</div><div>VAT NK (₫)</div><div>VAT NK %</div><div>Tên xuất HĐ</div><div></div></div>`;
   DRAFT_LINES.forEach((l,i)=>{
     const fx=N(l.fx)>0?N(l.fx):fxdef;
     const vnd = N(l.priceVND)>0? N(l.priceVND) : Math.round(N(l.priceFC)*fx);
     const p=prodOf(l.product);
     const defInvName=l.invoiceName||(p?(p.invoiceName||p.groupVI||''):'');
+    const nameHint=p?(p.groupVI||''):'';
+    const warnStyle=l.product&&!p?'border-color:var(--red);':'';
     h+=`<div class="linerow">
-      <select onchange="DRAFT_LINES[${i}].product=this.value;renderLineEditor()">${opts(l.product)}</select>
+      <div style="display:flex;flex-direction:column;gap:2px">
+        <input list="${dlId}" value="${esc(l.product)}" placeholder="Mã SP" style="width:100%;${warnStyle}"
+          oninput="DRAFT_LINES[${i}].product=this.value.trim()"
+          onblur="renderLineEditor()">
+        <span style="font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(nameHint)}">${esc(nameHint)}</span>
+      </div>
       <input class="num" placeholder="SL" value="${l.qty||''}" oninput="DRAFT_LINES[${i}].qty=this.value;lineSummary()">
       <input class="num" placeholder="USD" value="${l.priceFC||''}" oninput="DRAFT_LINES[${i}].priceFC=this.value;lineVnd(${i});lineSummary()">
       <input class="num" placeholder="tỷ giá mua" value="${l.fx||fxdef}" oninput="DRAFT_LINES[${i}].fx=this.value;lineVnd(${i});lineSummary()" title="Tỷ giá quy đổi giá mua hàng">
