@@ -2407,15 +2407,39 @@ function saveInlinePayOrder(orderCode, kind, party){
   toast('Đã tạo '+code+' · Chờ duyệt');
 }
 function lineVnd(i){ const l=DRAFT_LINES[i]; const fx=N(l.fx)>0?N(l.fx):N(DB.settings.exchangeRate); const vnd=Math.round(N(l.priceFC)*fx); l.priceVND=vnd; const el=$('#lv_'+i); if(el) el.value=vnd||''; }
+function _showProdSearch(i,q){
+  const dd=document.getElementById('ps_'+i); if(!dd) return;
+  const query=(q||'').trim().toLowerCase();
+  if(!query){ dd.style.display='none'; return; }
+  const hits=DB.products.filter(p=>
+    p.code.toLowerCase().includes(query)||(p.groupVI||'').toLowerCase().includes(query)
+  ).slice(0,12);
+  if(!hits.length){ dd.innerHTML=`<div style="padding:8px 10px;color:var(--muted);font-size:12px">Không tìm thấy</div>`; dd.style.display='block'; return; }
+  dd.innerHTML=hits.map(p=>`<div onmousedown="_selectProd(${i},'${p.code.replace(/'/g,"\\'")}')"
+    style="padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:baseline"
+    onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background=''">
+    <b style="font-size:13px;white-space:nowrap">${esc(p.code)}</b>
+    <span style="font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.groupVI||'')}</span>
+  </div>`).join('');
+  dd.style.display='block';
+}
+function _selectProd(i,code){
+  DRAFT_LINES[i].product=code;
+  const inp=document.getElementById('pi_'+i); if(inp) inp.value=code;
+  const dd=document.getElementById('ps_'+i); if(dd) dd.style.display='none';
+  const p=prodOf(code);
+  const hint=document.getElementById('ph_'+i); if(hint) hint.textContent=p?(p.groupVI||''):'';
+  if(inp) inp.style.borderColor=p?'':'var(--red)';
+}
+
 function renderLineEditor(){
   const box=$('#lineEditor'); if(!box)return;
   const fxdef=N(DB.settings.exchangeRate);
-  const dlId='_dlProds';
-  const datalist=`<datalist id="${dlId}">${DB.products.map(p=>`<option value="${esc(p.code)}">`).join('')}</datalist>`;
   const lock='background:var(--surface2);color:var(--muted);pointer-events:none;';
-  let h=datalist+`<div class="linerow head"><div>Mã SP</div><div>SL</div><div>Giá USD</div><div>Tỷ giá mua</div><div>Giá VND</div><div>Tỷ giá thuế</div><div>Thuế NK (₫)</div><div>VAT NK (₫)</div><div>VAT NK %</div><div>Tên xuất HĐ</div><div></div></div>`;
+  const ddStyle='position:absolute;top:100%;left:0;right:0;background:var(--bg);border:1px solid var(--line);border-radius:8px;z-index:200;display:none;max-height:220px;overflow-y:auto;box-shadow:0 6px 20px rgba(0,0,0,.18);margin-top:2px';
+  let h=`<div class="linerow head"><div>Mã SP</div><div>SL</div><div>Giá USD</div><div>Tỷ giá mua</div><div>Giá VND</div><div>Tỷ giá thuế</div><div>Thuế NK (₫)</div><div>VAT NK (₫)</div><div>VAT NK %</div><div>Tên xuất HĐ</div><div></div></div>`;
   DRAFT_LINES.forEach((l,i)=>{
-    const nd=!!l.domestic; // nội địa
+    const nd=!!l.domestic;
     const fx=N(l.fx)>0?N(l.fx):fxdef;
     const vnd=N(l.priceVND)>0?N(l.priceVND):Math.round(N(l.priceFC)*fx);
     const p=prodOf(l.product);
@@ -2428,12 +2452,17 @@ function renderLineEditor(){
         <div style="display:flex;gap:4px;align-items:center">
           <button onclick="DRAFT_LINES[${i}].domestic=!DRAFT_LINES[${i}].domestic;if(DRAFT_LINES[${i}].domestic){DRAFT_LINES[${i}].priceFC=0;DRAFT_LINES[${i}].dutyAmt=0;DRAFT_LINES[${i}].importVATAmt=0;}renderLineEditor()"
             style="flex-shrink:0;font-size:10px;padding:2px 5px;border-radius:5px;border:1px solid var(--line);background:${nd?'var(--amber)':'var(--blue,#1a73e8)'};color:#fff;cursor:pointer;white-space:nowrap"
-            title="${nd?'Đang: Nội địa VND — bấm để đổi sang Nhập khẩu USD':'Đang: Nhập khẩu USD — bấm để đổi sang Nội địa VND'}">${nd?'🏭 VND':'🌐 NK'}</button>
-          <input list="${dlId}" value="${esc(l.product)}" placeholder="Mã SP" style="width:100%;${warnStyle}"
-            oninput="DRAFT_LINES[${i}].product=this.value.trim()"
-            onblur="renderLineEditor()">
+            title="${nd?'Đang: Nội địa VND':'Đang: Nhập khẩu USD'}">${nd?'🏭 VND':'🌐 NK'}</button>
+          <div style="position:relative;flex:1;min-width:0">
+            <input id="pi_${i}" value="${esc(l.product)}" placeholder="Gõ mã hoặc tên SP…" style="width:100%;${warnStyle}"
+              oninput="DRAFT_LINES[${i}].product=this.value.trim();_showProdSearch(${i},this.value)"
+              onfocus="_showProdSearch(${i},this.value)"
+              onblur="setTimeout(()=>{const d=document.getElementById('ps_${i}');if(d)d.style.display='none'},180)"
+              onkeydown="if(event.key==='Escape'){const d=document.getElementById('ps_${i}');if(d)d.style.display='none'}">
+            <div id="ps_${i}" style="${ddStyle}"></div>
+          </div>
         </div>
-        <span style="font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:2px" title="${esc(nameHint)}">${esc(nameHint)}</span>
+        <span id="ph_${i}" style="font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:2px" title="${esc(nameHint)}">${esc(nameHint)}</span>
       </div>
       <input class="num" placeholder="SL" value="${l.qty||''}" oninput="DRAFT_LINES[${i}].qty=this.value;lineSummary()">
       <input class="num" placeholder="USD" value="${nd?'':( l.priceFC||'')}" ${dis} oninput="DRAFT_LINES[${i}].priceFC=this.value;lineVnd(${i});lineSummary()">
