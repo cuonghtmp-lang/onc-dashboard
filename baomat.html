@@ -352,7 +352,13 @@ function cloudSave(silent){
       _cloudStatus='ok'; _updateCloudDot();
       if(!silent){ DB.settings.lastBackup=new Date().toISOString(); encStore(); toast('✓ Đã đồng bộ lên cloud'); }
     })
-    .catch(()=>{ _cloudStatus='err'; _updateCloudDot(); if(!silent) toast('Lỗi đồng bộ cloud',true); });
+    .catch(async(e)=>{
+      let detail=e;
+      if(e&&e.status) try{detail=await e.text();}catch(_){}
+      console.error('[ONC] cloudSave lỗi:',detail);
+      _cloudStatus='err'; _updateCloudDot();
+      if(!silent) toast('Lỗi đồng bộ cloud',true);
+    });
 }
 
 async function cloudLoad(){
@@ -361,7 +367,7 @@ async function cloudLoad(){
   try{
     _cloudStatus='syncing'; _updateCloudDot();
     const res=await fetch(url,{headers:_sbHeaders()});
-    if(!res.ok) throw res.status;
+    if(!res.ok){ const msg=await res.text().catch(()=>res.status); throw msg; }
     const rows=await res.json();
     _cloudStatus='ok'; _updateCloudDot();
     if(!rows||!rows.length||!rows[0].data) return;
@@ -373,7 +379,7 @@ async function cloudLoad(){
       const diffMin=Math.round((new Date(cloudTs)-new Date(localTs))/60000);
       _showCloudBanner(diffMin,cloudDB);
     }
-  }catch(e){ _cloudStatus='err'; _updateCloudDot(); }
+  }catch(e){ console.error('[ONC] cloudLoad lỗi:',e); _cloudStatus='err'; _updateCloudDot(); }
 }
 
 function _showCloudBanner(diffMin, cloudDB){
