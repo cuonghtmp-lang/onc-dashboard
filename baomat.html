@@ -1161,6 +1161,18 @@ function deliverSO(id){
 function nextPOrderCode(){ const pre='LTT-'+todayISO().replace(/-/g,'').slice(2)+'-'; let n=1,code; do{code=pre+String(n).padStart(2,'0');n++;}while((DB.porders||[]).some(p=>p.code===code)); return code; }
 function nextOrderCode(suppCode){ const d=todayISO().replace(/-/g,'').slice(2,6); const pre='PUR-'+d+'-'+(suppCode||'ORD')+'-'; let n=1,code; do{code=pre+String(n).padStart(3,'0');n++;}while((DB.orders||[]).some(o=>o.code===code)); return code; }
 function onSupChange(){ const sup=$('#f_sup').value; const el=$('#f_code'); if(!el||!sup)return; if(!el.value||el.dataset.auto==='1'){el.value=nextOrderCode(sup);el.dataset.auto='1';} }
+function quickPayOrder(orderCode, kind, party){
+  const open=payableItems().filter(it=>it.order===orderCode&&it.kind===kind&&it.party===party).reduce((a,it)=>a+it.open,0);
+  if(!(open>0.5)){ toast('Không còn số tiền cần tạo lệnh',true); return; }
+  const kindLabel=k=>k==='hàng'?'Tiền hàng':k.includes('quốc tế')?'VC quốc tế':k.includes('nội địa')?'VC nội địa':'Vận chuyển';
+  const note=(kind==='hàng'?'Thanh toán tiền hàng':'Thanh toán '+kindLabel(kind).toLowerCase())+' đơn '+orderCode;
+  const obj={id:nid(),code:nextPOrderCode(),date:todayISO(),order:orderCode,party,
+    amount:Math.round(open),dueDate:'',status:'draft',paidDate:'',bankRef:'',
+    approvedBy:'',approvedAt:'',rejectReason:'',note};
+  DB.porders.push(obj); save();
+  fillPayInfo(orderCode);
+  toast('✓ Đã tạo lệnh '+obj.code+' · Chờ duyệt');
+}
 function poParties(oc){
   const o=ordOf(oc); if(!o)return [];
   const arr=[];
@@ -2163,7 +2175,7 @@ function fillPayInfo(code, expandKind){
         <span class="num" style="font-size:11px;min-width:28px">${pct}%</span>
         <div class="spacer"></div>
         <span class="num" style="font-size:11px">${fmt(it.amount-it.open)}/${fmt(it.amount)} ₫</span>
-        ${open&&!isExpanded?`<button class="btn sm pri" style="margin-left:8px" onclick="fillPayInfo(${JSON.stringify(code)},${JSON.stringify(it.kind)})">+ Tạo lệnh TT</button>`:''}
+        ${open&&!isExpanded?`<button class="btn sm pri" style="margin-left:8px" onclick="quickPayOrder(${JSON.stringify(code)},${JSON.stringify(it.kind)},${JSON.stringify(it.party)})">⚡ Tạo ngay</button><button class="btn sm ghost" style="margin-left:4px" onclick="fillPayInfo(${JSON.stringify(code)},${JSON.stringify(it.kind)})">✏ Tùy chỉnh</button>`:''}
         ${!open?'<span class="tag g" style="font-size:11px;margin-left:8px">✓ Xong</span>':''}
       </div>
       ${pending>0?`<div style="padding:2px 0 4px;font-size:11px;color:var(--muted)">Lệnh đang chờ xử lý: <b>${fmt(pending)} ₫</b></div>`:''}`;
