@@ -362,6 +362,12 @@ function cloudSave(silent){
     });
 }
 
+async function _applyCloud(cloudDB, msg){
+  DB=cloudDB; normalizeDB(); await encStore(); refresh();
+  _cloudStatus='ok'; _updateCloudDot();
+  toast(msg||'☁ Đã đồng bộ dữ liệu mới nhất');
+}
+
 async function cloudLoad(){
   if(!_sbOk()) return;
   const url=_SB_URL+'/rest/v1/onc_data?key=eq.onc_main&select=data,updated_at';
@@ -376,16 +382,12 @@ async function cloudLoad(){
     if(!cloudDB||!cloudDB.settings) return;
     const cloudTs=cloudDB.settings.lastSaved||'';
     const localTs=(DB.settings&&DB.settings.lastSaved)||'';
-    if(cloudTs>localTs){
-      const diffMin=Math.round((new Date(cloudTs)-new Date(localTs))/60000);
-      _showCloudBanner(diffMin,cloudDB);
-    }
+    if(cloudTs>localTs) await _applyCloud(cloudDB,'☁ Đã tải dữ liệu mới nhất từ cloud');
   }catch(e){ console.error('[ONC] cloudLoad lỗi:',e); _cloudStatus='err'; _updateCloudDot(); }
 }
 
 async function _pollCloud(){
-  // Bỏ qua nếu đang chờ save lên cloud (tránh ghi đè dữ liệu vừa nhập)
-  if(_cloudSaveTimer) return;
+  if(_cloudSaveTimer) return; // đang chờ save → bỏ qua để không ghi đè
   const url=_SB_URL+'/rest/v1/onc_data?key=eq.onc_main&select=data,updated_at';
   try{
     const res=await fetch(url,{headers:_sbHeaders()});
@@ -396,34 +398,22 @@ async function _pollCloud(){
     if(!cloudDB||!cloudDB.settings) return;
     const cloudTs=cloudDB.settings.lastSaved||'';
     const localTs=(DB.settings&&DB.settings.lastSaved)||'';
-    if(cloudTs>localTs){
-      DB=cloudDB; normalizeDB(); await encStore(); refresh();
-      _cloudStatus='ok'; _updateCloudDot();
-      toast('☁ Đã nhận dữ liệu mới từ thiết bị khác');
-    }
+    if(cloudTs>localTs) await _applyCloud(cloudDB,'☁ Nhận dữ liệu mới từ thiết bị khác');
   }catch(e){ /* silent */ }
 }
 
-function _showCloudBanner(diffMin, cloudDB){
-  const existing = document.getElementById('cloudBanner');
-  if(existing) existing.remove();
-  const div = document.createElement('div');
-  div.id = 'cloudBanner';
-  div.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--blue,#1a73e8);color:#fff;padding:12px 18px;border-radius:10px;z-index:9999;display:flex;align-items:center;gap:12px;box-shadow:0 4px 16px rgba(0,0,0,.25);font-size:13.5px;max-width:420px';
-  div.innerHTML=`<span>☁ Cloud có dữ liệu mới hơn <b>${diffMin} phút</b></span>
-    <button onclick="_applyCloudDB()" style="background:#fff;color:#1a73e8;border:none;border-radius:6px;padding:5px 12px;font-weight:600;cursor:pointer">Tải về</button>
-    <button onclick="document.getElementById('cloudBanner').remove()" style="background:transparent;color:#fff;border:none;cursor:pointer;font-size:16px">✕</button>`;
-  document.body.appendChild(div);
-  window._pendingCloudDB = cloudDB;
-  setTimeout(()=>{ const b=document.getElementById('cloudBanner'); if(b) b.remove(); }, 30000);
-}
-
-async function _applyCloudDB(){
-  const b=document.getElementById('cloudBanner'); if(b) b.remove();
-  if(!window._pendingCloudDB) return;
-  DB=window._pendingCloudDB; window._pendingCloudDB=null;
-  normalizeDB(); await encStore(); refresh();
-  toast('✓ Đã tải dữ liệu mới nhất từ cloud');
+let _appEtag=null;
+async function _checkAppVersion(){
+  try{
+    const r=await fetch(location.pathname,{method:'HEAD',cache:'no-store'});
+    const tag=r.headers.get('etag')||r.headers.get('last-modified')||'';
+    if(!_appEtag){ _appEtag=tag; return; }
+    if(tag&&tag!==_appEtag&&!_cloudSaveTimer){
+      _appEtag=tag;
+      toast('🔄 Phiên bản mới — đang tải lại…');
+      setTimeout(()=>location.reload(true),1500);
+    }
+  }catch(e){}
 }
 
 function _updateCloudDot(){
@@ -3038,7 +3028,9 @@ function _startApp(){
   renderNav();go('dashboard');
   setTimeout(()=>{ cloudLoad(); _autoDriveBackupIfNeeded(); },1500);
   if(_pollInterval) clearInterval(_pollInterval);
-  _pollInterval=setInterval(_pollCloud,30000);
+  _pollInterval=setInterval(_pollCloud,30000);        // sync dữ liệu mỗi 30s
+  setTimeout(_checkAppVersion,10000);                 // kiểm tra version sau 10s
+  setInterval(_checkAppVersion,300000);               // kiểm tra lại mỗi 5 phút
 }
 function lockNow(){CRYPTO_KEY=null;location.reload();}
 async function changePw(){const oldp=prompt('Mật khẩu hiện tại:');if(!oldp)return;try{await _decrypt(oldp);}catch(e){toast('Sai mật khẩu',true);return;}const n1=prompt('Mật khẩu MỚI:');if(!n1||n1.length<4){toast('Không hợp lệ',true);return;}const n2=prompt('Nhập lại:');if(n1!==n2){toast('Không khớp',true);return;}const salt=crypto.getRandomValues(new Uint8Array(16));localStorage.setItem(SALT_KEY,_b64(salt.buffer));CRYPTO_KEY=await _derive(n1,salt);await encStore();toast('Đã đổi mật khẩu');}
