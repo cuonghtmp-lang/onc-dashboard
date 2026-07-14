@@ -2569,6 +2569,25 @@ function vPriceList(){
 }
 
 /* ----- SETTINGS ----- */
+
+// ── Auto Backup lên Google Sheets qua Apps Script ─────────────────
+function autoBackup(){
+  const url = DB.settings.backupScriptUrl||'';
+  if(!url){ toast('Chưa cài URL Script — vào Thiết lập → Backup URL',true); return; }
+  const key = DB.settings.backupKey||'onc2026';
+  toast('Đang backup lên Google Sheets…');
+  fetch(url, {
+    method:'POST',
+    mode:'no-cors',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({key, data: DB})
+  }).then(()=>{
+    DB.settings.lastBackup = new Date().toISOString();
+    save();
+    toast('✓ Đã backup lên Google Drive & Sheets!');
+  }).catch(e=>toast('Lỗi backup: '+e,true));
+}
+
 function vSettings(){
   periodChip(); const s=DB.settings;
   $('#view').innerHTML=`<div class="panel"><div class="ph"><h2>Tham số tính toán</h2></div><div style="padding:18px 20px"><div class="grid">
@@ -2612,6 +2631,19 @@ function vSettings(){
     <div class="fld"><label>&nbsp;</label><div class="hint">${s.lockDate?('Đang khóa đến <b>'+dshow(s.lockDate)+'</b>.'):'Chưa khóa kỳ nào.'} Nên khóa sau khi chốt sổ mỗi tháng.</div></div>
   </div></div></div>
 
+  <div class="panel" style="margin-top:12px"><div class="ph"><h3>☁ Backup tự động (Google Drive &amp; Sheets)</h3></div><div style="padding:14px 16px">
+    <div class="flds">
+      <div class="fld full"><label>Apps Script URL <a href="https://raw.githubusercontent.com/cuonghtmp-lang/onc-dashboard/main/ONC_AppScript.js" target="_blank" style="font-size:11px;margin-left:8px">📥 Tải code script</a></label>
+        <input id="s_bkurl" placeholder="https://script.google.com/macros/s/AKfy.../exec" value="${esc(DB.settings.backupScriptUrl||'')}">
+        <div class="hint">Deploy Apps Script → paste Web App URL vào đây → bấm "☁ Backup" trong menu Sao lưu</div>
+      </div>
+      <div class="fld"><label>Khóa bí mật (SECRET_KEY)</label>
+        <input id="s_bkkey" value="${esc(DB.settings.backupKey||'onc2026')}">
+        <div class="hint">Phải khớp với SECRET_KEY trong script</div>
+      </div>
+    </div>
+  </div></div>
+
   <div style="text-align:right"><button class="btn pri" onclick="saveSettings()">Lưu tất cả thiết lập</button></div>`;
 }
 function clearLogo(){ DB.settings.logo=''; save(); vSettings(); toast('Đã xóa logo'); }
@@ -2625,6 +2657,8 @@ function saveSettings(){
   s.exchangeRate=N($('#s_fx').value); s.margin=N($('#s_margin').value)/100; s.vatSale=N($('#s_vat').value)/100;
   s.finRate=N($('#s_fin').value)/100; s.sgaRate=N($('#s_sga').value)/100; s.contRate=N($('#s_cont').value)/100;
   s.custDays=N($('#s_cd').value); s.suppDays=N($('#s_sd').value); s.periodStart=$('#s_ps').value; s.periodEnd=$('#s_pe').value;
+  if($('#s_bkurl')) s.backupScriptUrl=$('#s_bkurl').value.trim();
+  if($('#s_bkkey')) s.backupKey=$('#s_bkkey').value.trim()||'onc2026';
   s.company=$('#s_company').value.trim(); s.address=$('#s_addr').value.trim(); s.taxCode=$('#s_tax').value.trim();
   s.phone=$('#s_phone').value.trim(); s.email=$('#s_email').value.trim(); s.website=$('#s_web').value.trim();
   s.bank=$('#s_bank').value.trim(); s.repName=$('#s_rep').value.trim(); s.repTitle=$('#s_reptitle').value.trim();
@@ -2672,13 +2706,24 @@ function exportExcel(){
 function vBackup(){
   periodChip();
   const counts=`${DB.products.length} SP · ${DB.suppliers.length} NCC · ${DB.customers.length} KH · ${DB.orders.length} đơn nhập · ${DB.lines.length} dòng hàng · ${DB.sales.length} dòng bán · ${DB.opex.length} chi phí · ${DB.cash.length} thu chi`;
+  const lastBk = DB.settings.lastBackup ? new Date(DB.settings.lastBackup).toLocaleString('vi-VN') : 'Chưa có';
+  const hasScript = !!(DB.settings.backupScriptUrl);
   $('#view').innerHTML=`
   <div class="panel"><div class="ph"><h2>Sao lưu &amp; khôi phục</h2></div><div style="padding:18px 20px">
     <div class="alert g" style="margin:0 0 16px"><span class="ic">✓</span><div>Dữ liệu được lưu tự động trong trình duyệt này. Để an toàn, hãy <b>Xuất file sao lưu</b> định kỳ và cất giữ.</div></div>
     <p style="color:var(--ink2);margin:0 0 6px">Dữ liệu hiện tại:</p>
     <p class="num" style="color:var(--muted);margin:0 0 18px;font-size:12.5px">${counts}</p>
+    <div style="background:var(--surface2);border-radius:10px;padding:14px 16px;margin-bottom:16px">
+      <div style="font-weight:600;margin-bottom:10px">☁ Backup tự động lên Google Drive & Sheets</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Lần backup cuối: <b>${lastBk}</b></div>
+      ${hasScript
+        ? `<button class="btn pri" onclick="autoBackup()">☁ Backup ngay lên Google</button>`
+        : `<div class="alert a" style="margin:0 0 10px"><span class="ic">i</span><div>Chưa cài Apps Script URL. Vào <b>Thiết lập</b> → nhập URL Script để bật tính năng này.</div></div>
+           <button class="btn ghost" onclick="go('settings')">→ Vào Thiết lập để cài URL</button>`
+      }
+    </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn pri" onclick="exportJSON()">⬇ Xuất file sao lưu (.json)</button>
+      <button class="btn" onclick="exportJSON()">⬇ Xuất file sao lưu (.json)</button>
       <button class="btn" onclick="exportExcel()">⬇ Xuất Excel cho Google Sheets</button>
       <button class="btn" onclick="exportCSV()">⬇ Xuất bán hàng (.csv)</button>
       <button class="btn danger" onclick="resetToBlank()" style="margin-left:auto">🗑 Đưa về bảng trắng</button>
