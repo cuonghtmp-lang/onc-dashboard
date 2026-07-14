@@ -335,7 +335,7 @@ function scheduleCloudSave(){
 }
 
 const _SB_URL='https://cwswsqvtahfeqgpznsgy.supabase.co';
-const _SB_KEY=['sb_','secret_r72CIj2Upt8','bCw3wtefwQw_BDuw6S-d'].join('');
+const _SB_KEY='sb_publishable_ajJ4-1PpV4aO_8W0gbVjQA_ia10O6CU';
 function _sbHeaders(){ return {'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY,'Content-Type':'application/json'}; }
 function _sbOk(){ return true; }
 
@@ -450,11 +450,10 @@ function normalizeDB(){
     termPayment:'Thanh toán bằng chuyển khoản trong vòng 30 ngày kể từ ngày nhận hàng và hóa đơn.',
     termWarranty:'Hàng chính hãng, bảo hành theo tiêu chuẩn nhà sản xuất.',lockDate:'',
     supabaseUrl:'https://cwswsqvtahfeqgpznsgy.supabase.co',
-    supabaseKey:['sb_','secret_r72CIj2Upt8','bCw3wtefwQw_BDuw6S-d'].join('')};
+    supabaseKey:'sb_publishable_ajJ4-1PpV4aO_8W0gbVjQA_ia10O6CU'};
   Object.keys(defs).forEach(k=>{ if(s[k]==null) s[k]=defs[k]; });
-  // Luôn đảm bảo Supabase config đúng dù đã có data cũ
   if(!s.supabaseUrl) s.supabaseUrl='https://cwswsqvtahfeqgpznsgy.supabase.co';
-  if(!s.supabaseKey) s.supabaseKey=['sb_','secret_r72CIj2Upt8','bCw3wtefwQw_BDuw6S-d'].join('');
+  if(!s.supabaseKey) s.supabaseKey='sb_publishable_ajJ4-1PpV4aO_8W0gbVjQA_ia10O6CU';
 }
 function nid(){ DB.seq=(DB.seq||0)+1; return DB.seq; }
 
@@ -2771,9 +2770,9 @@ function vSettings(){
         <input id="s_sburl" placeholder="https://xxxxxxxxxxxx.supabase.co" value="${esc(DB.settings.supabaseUrl||'')}">
         <div class="hint">Supabase Dashboard → Settings → API → Project URL</div>
       </div>
-      <div class="fld full"><label>Service Role Key</label>
-        <input id="s_sbkey" type="password" placeholder="sb_secret_..." value="${esc(DB.settings.supabaseKey||'')}">
-        <div class="hint">Supabase Dashboard → Settings → API → service_role → Reveal</div>
+      <div class="fld full"><label>Anon / Publishable Key</label>
+        <input id="s_sbkey" type="password" placeholder="sb_publishable_..." value="${esc(DB.settings.supabaseKey||'')}">
+        <div class="hint">Supabase Dashboard → Settings → API → anon / public key</div>
       </div>
     </div>
     <div style="margin-top:10px;display:flex;gap:8px">
