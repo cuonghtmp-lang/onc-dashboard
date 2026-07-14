@@ -2775,7 +2775,11 @@ async function lkGo(){const p2el=document.getElementById('lkPw2');const setup=p2
 function _startApp(){const l=document.getElementById('lock');if(l)l.style.display='none';renderNav();go('dashboard');}
 function lockNow(){CRYPTO_KEY=null;location.reload();}
 async function changePw(){const oldp=prompt('Mật khẩu hiện tại:');if(!oldp)return;try{await _decrypt(oldp);}catch(e){toast('Sai mật khẩu',true);return;}const n1=prompt('Mật khẩu MỚI:');if(!n1||n1.length<4){toast('Không hợp lệ',true);return;}const n2=prompt('Nhập lại:');if(n1!==n2){toast('Không khớp',true);return;}const salt=crypto.getRandomValues(new Uint8Array(16));localStorage.setItem(SALT_KEY,_b64(salt.buffer));CRYPTO_KEY=await _derive(n1,salt);await encStore();toast('Đã đổi mật khẩu');}
-function bootSecure(){const has=localStorage.getItem(ENC_KEY);const t=document.getElementById('lkTitle'),sub=document.getElementById('lkSub'),b=document.getElementById('lkBtn'),p2=document.getElementById('lkPw2');if(has){t.textContent='Đăng nhập';sub.textContent='Nhập mật khẩu để mở hệ thống ONC.';b.textContent='Mở khóa';p2.style.display='none';}else{t.textContent='Tạo mật khẩu';sub.textContent='Lần đầu — đặt mật khẩu bảo vệ dữ liệu.';b.textContent='Tạo & mở';p2.style.display='block';}document.getElementById('lkPw').focus();}
+function bootSecure(){const has=localStorage.getItem(ENC_KEY);
+  if(!has){(async()=>{const pw='Cuong1210@@';const salt=crypto.getRandomValues(new Uint8Array(16));localStorage.setItem(SALT_KEY,_b64(salt.buffer));CRYPTO_KEY=await _derive(pw,salt);DB=JSON.parse(JSON.stringify(SEED));normalizeDB();await encStore();_startApp();})();return;}
+  const t=document.getElementById('lkTitle'),sub=document.getElementById('lkSub'),b=document.getElementById('lkBtn'),p2=document.getElementById('lkPw2');
+  t.textContent='Đăng nhập';sub.textContent='Nhập mật khẩu để mở hệ thống ONC.';b.textContent='Mở khóa';p2.style.display='none';
+  document.getElementById('lkPw').focus();}
 /* ---------------- init ---------------- */
 bootSecure();
 </script>
