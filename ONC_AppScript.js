@@ -1,42 +1,51 @@
 // ══════════════════════════════════════════════════════════════════
-// ONC AUTO BACKUP — Google Apps Script
-// Deploy 1 lần, sau đó app tự backup mỗi khi anh bấm hoặc theo lịch
+// ONC SYNC — Google Apps Script v2.0
+// Hỗ trợ đồng bộ 2 chiều: save (POST) + load (GET)
 // ══════════════════════════════════════════════════════════════════
 
-const FOLDER_NAME = 'ONC Backup';
-const SHEET_NAME  = 'ONC Dashboard Backup';
-const SECRET_KEY  = 'onc2026'; // Đổi khóa bảo vệ endpoint nếu muốn
+const FOLDER_NAME   = 'ONC Backup';
+const SHEET_NAME    = 'ONC Dashboard Backup';
+const SECRET_KEY    = 'onc2026'; // Đổi khóa bảo vệ endpoint nếu muốn
+const LATEST_FILE   = 'ONC_latest.json'; // File luôn ghi đè = dữ liệu mới nhất
 
-// ── Hàm nhận POST từ app ONC ──────────────────────────────────────
+// ── Hàm nhận POST từ app ONC (save) ─────────────────────────────
 function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
-    
+
     // Xác thực khóa bí mật
     if (body.key !== SECRET_KEY) {
       return ContentService.createTextOutput(
         JSON.stringify({ok: false, error: 'Unauthorized'})
       ).setMimeType(ContentService.MimeType.JSON);
     }
-    
+
     const db = body.data; // Toàn bộ DB từ app
     const ts = new Date().toISOString().replace('T',' ').slice(0,19);
-    
-    // 1. Lưu file JSON vào Google Drive
     const folder = getOrCreateFolder(FOLDER_NAME);
+
+    // 1. Lưu file latest (ghi đè) — dùng để đồng bộ thiết bị khác
+    const latestFiles = folder.getFilesByName(LATEST_FILE);
+    if (latestFiles.hasNext()) {
+      latestFiles.next().setContent(JSON.stringify(db));
+    } else {
+      folder.createFile(LATEST_FILE, JSON.stringify(db), MimeType.PLAIN_TEXT);
+    }
+
+    // 2. Lưu file backup có timestamp
     const filename = `ONC_backup_${ts.replace(/[: ]/g,'-')}.json`;
     folder.createFile(filename, JSON.stringify(db, null, 2), MimeType.PLAIN_TEXT);
-    
-    // Xóa file cũ hơn 30 ngày
+
+    // Xóa file backup cũ hơn 30 ngày (không xóa latest)
     cleanOldFiles(folder, 30);
-    
-    // 2. Cập nhật Google Sheet tóm tắt
+
+    // 3. Cập nhật Google Sheet tóm tắt
     updateSummarySheet(db, ts);
-    
+
     return ContentService.createTextOutput(
       JSON.stringify({ok: true, timestamp: ts, filename: filename})
     ).setMimeType(ContentService.MimeType.JSON);
-    
+
   } catch(err) {
     return ContentService.createTextOutput(
       JSON.stringify({ok: false, error: err.toString()})
@@ -131,9 +140,34 @@ function scheduledReminder() {
   );
 }
 
-// ── GET: kiểm tra endpoint còn sống ──────────────────────────────
+// ── GET: health check hoặc load dữ liệu mới nhất ────────────────
 function doGet(e) {
+  const action = (e && e.parameter && e.parameter.action) || '';
+
+  if (action === 'load') {
+    // Xác thực
+    const key = e.parameter.key || '';
+    if (key !== SECRET_KEY) {
+      return ContentService.createTextOutput(
+        JSON.stringify({ok: false, error: 'Unauthorized'})
+      ).setMimeType(ContentService.MimeType.JSON);
+    }
+    // Trả về dữ liệu mới nhất
+    const folder = getOrCreateFolder(FOLDER_NAME);
+    const files = folder.getFilesByName(LATEST_FILE);
+    if (!files.hasNext()) {
+      return ContentService.createTextOutput(
+        JSON.stringify({ok: false, error: 'No data yet'})
+      ).setMimeType(ContentService.MimeType.JSON);
+    }
+    const content = files.next().getBlob().getDataAsString();
+    return ContentService.createTextOutput(
+      JSON.stringify({ok: true, data: JSON.parse(content)})
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // Health check
   return ContentService.createTextOutput(
-    JSON.stringify({ok: true, service: 'ONC Backup', version: '1.0'})
+    JSON.stringify({ok: true, service: 'ONC Sync', version: '2.0'})
   ).setMimeType(ContentService.MimeType.JSON);
 }

@@ -295,6 +295,7 @@ a{color:var(--blue);text-decoration:none}
       </div>
       <div class="spacer"></div>
       <div class="period" id="periodChip"></div>
+      <div class="savechip" id="cloudDot" style="font-size:11px;margin-right:2px"></div>
       <div class="savechip" id="topSave">●</div>
     </header>
     <div class="content" id="view"></div>
@@ -318,7 +319,66 @@ function load(){
 }
 let saveTimer=null;
 let saveFailed=false;
-function save(){ encStore(); }
+let _cloudSaveTimer=null;
+let _cloudStatus='idle'; // idle | syncing | ok | err
+
+function save(){
+  if(!DB.settings.lastSaved) DB.settings.lastSaved='';
+  DB.settings.lastSaved = new Date().toISOString();
+  encStore();
+  scheduleCloudSave();
+}
+
+function scheduleCloudSave(){
+  clearTimeout(_cloudSaveTimer);
+  _cloudSaveTimer = setTimeout(()=>cloudSave(true), 8000);
+}
+
+function cloudSave(silent){
+  const url = DB.settings.backupScriptUrl||'';
+  if(!url) return;
+  const key = DB.settings.backupKey||'onc2026';
+  _cloudStatus='syncing'; _updateCloudDot();
+  if(!silent) toast('Đang đồng bộ lên cloud…');
+  fetch(url, {
+    method:'POST', mode:'no-cors',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({key, data: DB})
+  }).then(()=>{
+    _cloudStatus='ok'; _updateCloudDot();
+    if(!silent){ DB.settings.lastBackup=new Date().toISOString(); encStore(); toast('✓ Đã đồng bộ lên cloud'); }
+  }).catch(()=>{ _cloudStatus='err'; _updateCloudDot(); if(!silent) toast('Lỗi đồng bộ cloud',true); });
+}
+
+async function cloudLoad(){
+  const url = DB.settings.backupScriptUrl||'';
+  if(!url) return;
+  const key = DB.settings.backupKey||'onc2026';
+  try{
+    _cloudStatus='syncing'; _updateCloudDot();
+    const res = await fetch(`${url}?action=load&key=${encodeURIComponent(key)}`);
+    const json = await res.json();
+    _cloudStatus='ok'; _updateCloudDot();
+    if(!json.ok || !json.data) return;
+    const cloudDB = json.data;
+    const cloudTs = (cloudDB.settings&&cloudDB.settings.lastSaved)||'';
+    const localTs = (DB.settings&&DB.settings.lastSaved)||'';
+    if(cloudTs > localTs){
+      const diffMin = Math.round((new Date(cloudTs)-new Date(localTs))/60000);
+      const ok = confirm(`☁ Cloud có dữ liệu mới hơn ${diffMin} phút.\nTải về thay thế dữ liệu thiết bị này?`);
+      if(ok){ DB=cloudDB; normalizeDB(); await encStore(); refresh(); toast('✓ Đã tải dữ liệu mới nhất từ cloud'); }
+    }
+  }catch(e){ _cloudStatus='err'; _updateCloudDot(); }
+}
+
+function _updateCloudDot(){
+  const el=document.getElementById('cloudDot');
+  if(!el) return;
+  const map={idle:'',syncing:'☁ đang sync…',ok:'☁ đã sync',err:'☁ lỗi'};
+  const col={idle:'',syncing:'#5a8dcc',ok:'#0f8a5f',err:'#e5793c'};
+  el.textContent=map[_cloudStatus]||'';
+  el.style.color=col[_cloudStatus]||'';
+}
 function flagSaved(t){ const s=document.getElementById('saveState'); if(s)s.textContent=t;
   const c=document.getElementById('topSave'); if(c){c.style.color="#0f8a5f";c.textContent="● đã lưu"; clearTimeout(saveTimer);
   saveTimer=setTimeout(()=>{c.textContent="●";},1400);} }
@@ -2592,23 +2652,8 @@ function vPriceList(){
 
 /* ----- SETTINGS ----- */
 
-// ── Auto Backup lên Google Sheets qua Apps Script ─────────────────
-function autoBackup(){
-  const url = DB.settings.backupScriptUrl||'';
-  if(!url){ toast('Chưa cài URL Script — vào Thiết lập → Backup URL',true); return; }
-  const key = DB.settings.backupKey||'onc2026';
-  toast('Đang backup lên Google Sheets…');
-  fetch(url, {
-    method:'POST',
-    mode:'no-cors',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({key, data: DB})
-  }).then(()=>{
-    DB.settings.lastBackup = new Date().toISOString();
-    save();
-    toast('✓ Đã backup lên Google Drive & Sheets!');
-  }).catch(e=>toast('Lỗi backup: '+e,true));
-}
+// ── Giữ lại để tương thích — redirect sang cloudSave ─────────────
+function autoBackup(){ cloudSave(false); }
 
 function vSettings(){
   periodChip(); const s=DB.settings;
@@ -2736,10 +2781,13 @@ function vBackup(){
     <p style="color:var(--ink2);margin:0 0 6px">Dữ liệu hiện tại:</p>
     <p class="num" style="color:var(--muted);margin:0 0 18px;font-size:12.5px">${counts}</p>
     <div style="background:var(--surface2);border-radius:10px;padding:14px 16px;margin-bottom:16px">
-      <div style="font-weight:600;margin-bottom:10px">☁ Backup tự động lên Google Drive & Sheets</div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Lần backup cuối: <b>${lastBk}</b></div>
+      <div style="font-weight:600;margin-bottom:10px">☁ Đồng bộ đa thiết bị (Google Drive)</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Lần sync cuối: <b>${lastBk}</b> · Dữ liệu tự động đẩy lên cloud sau mỗi lần lưu (8 giây).</div>
       ${hasScript
-        ? `<button class="btn pri" onclick="autoBackup()">☁ Backup ngay lên Google</button>`
+        ? `<div style="display:flex;gap:8px;flex-wrap:wrap">
+             <button class="btn pri" onclick="cloudSave(false)">☁ Đẩy lên cloud ngay</button>
+             <button class="btn" onclick="cloudLoad()">⬇ Tải từ cloud</button>
+           </div>`
         : `<div class="alert a" style="margin:0 0 10px"><span class="ic">i</span><div>Chưa cài Apps Script URL. Vào <b>Thiết lập</b> → nhập URL Script để bật tính năng này.</div></div>
            <button class="btn ghost" onclick="go('settings')">→ Vào Thiết lập để cài URL</button>`
       }
@@ -2843,7 +2891,7 @@ async function _derive(pw,salt){const km=await crypto.subtle.importKey('raw',new
 async function encStore(){if(!CRYPTO_KEY)return;try{const iv=crypto.getRandomValues(new Uint8Array(12));const data=new TextEncoder().encode(JSON.stringify(DB));const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},CRYPTO_KEY,data);const out=new Uint8Array(iv.length+ct.byteLength);out.set(iv,0);out.set(new Uint8Array(ct),iv.length);localStorage.setItem(ENC_KEY,_b64(out.buffer));saveFailed=false;flagSaved('Đã lưu (mã hóa)');}catch(e){flagSaved('KHÔNG lưu được');if(!saveFailed){saveFailed=true;toast('Không lưu được!',true);}}}
 async function _decrypt(pw){const salt=_ub64(localStorage.getItem(SALT_KEY));const key=await _derive(pw,salt);const blob=_ub64(localStorage.getItem(ENC_KEY));const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:blob.slice(0,12)},key,blob.slice(12));const db=JSON.parse(new TextDecoder().decode(pt));CRYPTO_KEY=key;return db;}
 async function lkGo(){const p2el=document.getElementById('lkPw2');const setup=p2el.style.display!=='none';const pw=document.getElementById('lkPw').value;const err=document.getElementById('lkErr');err.textContent='';if(pw.length<4){err.textContent='Mật khẩu tối thiểu 4 ký tự.';return;}if(setup){if(pw!==p2el.value){err.textContent='Hai lần nhập không khớp.';return;}const salt=crypto.getRandomValues(new Uint8Array(16));localStorage.setItem(SALT_KEY,_b64(salt.buffer));CRYPTO_KEY=await _derive(pw,salt);let plain=null;try{const s=localStorage.getItem(KEY);if(s)plain=JSON.parse(s);}catch(e){}DB=plain||JSON.parse(JSON.stringify(SEED));normalizeDB();await encStore();try{localStorage.removeItem(KEY);}catch(e){}_startApp();}else{try{DB=await _decrypt(pw);normalizeDB();_startApp();}catch(e){err.textContent='Sai mật khẩu.';}}}
-function _startApp(){const l=document.getElementById('lock');if(l)l.style.display='none';renderNav();go('dashboard');}
+function _startApp(){const l=document.getElementById('lock');if(l)l.style.display='none';renderNav();go('dashboard');setTimeout(()=>cloudLoad(),1500);}
 function lockNow(){CRYPTO_KEY=null;location.reload();}
 async function changePw(){const oldp=prompt('Mật khẩu hiện tại:');if(!oldp)return;try{await _decrypt(oldp);}catch(e){toast('Sai mật khẩu',true);return;}const n1=prompt('Mật khẩu MỚI:');if(!n1||n1.length<4){toast('Không hợp lệ',true);return;}const n2=prompt('Nhập lại:');if(n1!==n2){toast('Không khớp',true);return;}const salt=crypto.getRandomValues(new Uint8Array(16));localStorage.setItem(SALT_KEY,_b64(salt.buffer));CRYPTO_KEY=await _derive(n1,salt);await encStore();toast('Đã đổi mật khẩu');}
 function bootSecure(){const has=localStorage.getItem(ENC_KEY);
