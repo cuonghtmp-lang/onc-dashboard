@@ -2262,7 +2262,7 @@ function editOrder(code){
         finRate:N(o.finRate),sgaRate:N(o.sgaRate),contRate:N(o.contRate),acfta:$('#f_acfta').checked,docs};
       withTS(obj, code?o:null);
       // commit lines
-      const newLines=DRAFT_LINES.filter(l=>l.product&&N(l.qty)>0).map(l=>({id:l.id||nid(),order:c,product:l.product,qty:N(l.qty),priceFC:N(l.priceFC),fx:N(l.fx)>0?N(l.fx):N(DB.settings.exchangeRate),priceVND:N(l.priceVND),duty:N(l.duty),dutyAmt:N(l.dutyAmt),fxTax:N(l.fxTax)||0,importVAT:N(l.importVAT),importVATAmt:N(l.importVATAmt)||0,invoiceName:l.invoiceName||'',note:l.note||''}));
+      const newLines=DRAFT_LINES.filter(l=>l.product&&N(l.qty)>0).map(l=>({id:l.id||nid(),order:c,product:l.product,qty:N(l.qty),domestic:!!l.domestic,priceFC:l.domestic?0:N(l.priceFC),fx:l.domestic?1:(N(l.fx)>0?N(l.fx):N(DB.settings.exchangeRate)),priceVND:N(l.priceVND),duty:l.domestic?0:N(l.duty),dutyAmt:l.domestic?0:N(l.dutyAmt),fxTax:l.domestic?0:(N(l.fxTax)||0),importVAT:N(l.importVAT),importVATAmt:l.domestic?0:N(l.importVATAmt)||0,invoiceName:l.invoiceName||'',note:l.note||''}));
       // Nếu đơn đã nhập kho → tự cập nhật invoiceName vào sản phẩm ngay
       if(obj.dateWH){
         newLines.filter(l=>l.invoiceName&&l.invoiceName.trim()).forEach(l=>{
@@ -2412,36 +2412,49 @@ function renderLineEditor(){
   const fxdef=N(DB.settings.exchangeRate);
   const dlId='_dlProds';
   const datalist=`<datalist id="${dlId}">${DB.products.map(p=>`<option value="${esc(p.code)}">`).join('')}</datalist>`;
+  const lock='background:var(--surface2);color:var(--muted);pointer-events:none;';
   let h=datalist+`<div class="linerow head"><div>Mã SP</div><div>SL</div><div>Giá USD</div><div>Tỷ giá mua</div><div>Giá VND</div><div>Tỷ giá thuế</div><div>Thuế NK (₫)</div><div>VAT NK (₫)</div><div>VAT NK %</div><div>Tên xuất HĐ</div><div></div></div>`;
   DRAFT_LINES.forEach((l,i)=>{
+    const nd=!!l.domestic; // nội địa
     const fx=N(l.fx)>0?N(l.fx):fxdef;
-    const vnd = N(l.priceVND)>0? N(l.priceVND) : Math.round(N(l.priceFC)*fx);
+    const vnd=N(l.priceVND)>0?N(l.priceVND):Math.round(N(l.priceFC)*fx);
     const p=prodOf(l.product);
     const defInvName=l.invoiceName||(p?(p.invoiceName||p.groupVI||''):'');
     const nameHint=p?(p.groupVI||''):'';
     const warnStyle=l.product&&!p?'border-color:var(--red);':'';
-    h+=`<div class="linerow">
+    const dis=nd?`disabled style="${lock}"`:'' ;
+    h+=`<div class="linerow" style="${nd?'background:color-mix(in slab,var(--surface2) 30%,transparent);border-radius:8px;padding:2px 4px':''}">
       <div style="display:flex;flex-direction:column;gap:2px">
-        <input list="${dlId}" value="${esc(l.product)}" placeholder="Mã SP" style="width:100%;${warnStyle}"
-          oninput="DRAFT_LINES[${i}].product=this.value.trim()"
-          onblur="renderLineEditor()">
-        <span style="font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(nameHint)}">${esc(nameHint)}</span>
+        <div style="display:flex;gap:4px;align-items:center">
+          <button onclick="DRAFT_LINES[${i}].domestic=!DRAFT_LINES[${i}].domestic;if(DRAFT_LINES[${i}].domestic){DRAFT_LINES[${i}].priceFC=0;DRAFT_LINES[${i}].dutyAmt=0;DRAFT_LINES[${i}].importVATAmt=0;}renderLineEditor()"
+            style="flex-shrink:0;font-size:10px;padding:2px 5px;border-radius:5px;border:1px solid var(--line);background:${nd?'var(--amber)':'var(--blue,#1a73e8)'};color:#fff;cursor:pointer;white-space:nowrap"
+            title="${nd?'Đang: Nội địa VND — bấm để đổi sang Nhập khẩu USD':'Đang: Nhập khẩu USD — bấm để đổi sang Nội địa VND'}">${nd?'🏭 VND':'🌐 NK'}</button>
+          <input list="${dlId}" value="${esc(l.product)}" placeholder="Mã SP" style="width:100%;${warnStyle}"
+            oninput="DRAFT_LINES[${i}].product=this.value.trim()"
+            onblur="renderLineEditor()">
+        </div>
+        <span style="font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:2px" title="${esc(nameHint)}">${esc(nameHint)}</span>
       </div>
       <input class="num" placeholder="SL" value="${l.qty||''}" oninput="DRAFT_LINES[${i}].qty=this.value;lineSummary()">
-      <input class="num" placeholder="USD" value="${l.priceFC||''}" oninput="DRAFT_LINES[${i}].priceFC=this.value;lineVnd(${i});lineSummary()">
-      <input class="num" placeholder="tỷ giá mua" value="${l.fx||fxdef}" oninput="DRAFT_LINES[${i}].fx=this.value;lineVnd(${i});lineSummary()" title="Tỷ giá quy đổi giá mua hàng">
-      <input class="num" id="lv_${i}" placeholder="VND" value="${vnd||''}" oninput="DRAFT_LINES[${i}].priceVND=this.value;lineSummary()" title="Giá VND = Giá USD × tỷ giá mua (có thể sửa)">
-      <input class="num" placeholder="tỷ giá thuế" value="${N(l.fxTax)>0?N(l.fxTax):(l.fx||fxdef)}" oninput="DRAFT_LINES[${i}].fxTax=N(this.value);lineSummary()" title="Tỷ giá HQ dùng để tính thuế NK và VAT NK — thường do Hải quan công bố, khác tỷ giá mua">
-      <input class="num" placeholder="Thuế NK ₫" value="${N(l.dutyAmt)>0?Math.round(N(l.dutyAmt)):''}" oninput="DRAFT_LINES[${i}].dutyAmt=N(this.value);DRAFT_LINES[${i}].duty=0;lineSummary()" title="Số tiền thuế NK (VND) — lấy thẳng từ tờ khai HQ">
-      <input class="num" placeholder="VAT NK ₫" value="${N(l.importVATAmt)>0?Math.round(N(l.importVATAmt)):''}" oninput="DRAFT_LINES[${i}].importVATAmt=N(this.value);lineSummary()" title="Số tiền VAT NK (VND) — lấy thẳng từ tờ khai HQ. Vào VAT đầu vào, không tính vào giá vốn">
-      <input class="num" placeholder="VAT NK %" value="${N(l.importVAT)>0?(N(l.importVAT)*100):10}" oninput="DRAFT_LINES[${i}].importVAT=this.value/100;lineSummary()" title="% VAT NK — dùng khi không có số tiền tờ khai, và làm cơ sở VAT bán ra cho khách hàng">
-      <input placeholder="Tên trên HĐ bán…" value="${esc(defInvName)}" oninput="DRAFT_LINES[${i}].invoiceName=this.value" title="Tên này sẽ tự cập nhật vào sản phẩm khi lưu đơn — dùng để xuất hóa đơn bán ra" style="font-size:11px">
+      <input class="num" placeholder="USD" value="${nd?'':( l.priceFC||'')}" ${dis} oninput="DRAFT_LINES[${i}].priceFC=this.value;lineVnd(${i});lineSummary()">
+      <input class="num" placeholder="tỷ giá" value="${nd?'':( l.fx||fxdef)}" ${dis} oninput="DRAFT_LINES[${i}].fx=this.value;lineVnd(${i});lineSummary()">
+      <input class="num" id="lv_${i}" placeholder="VND" value="${vnd||''}" oninput="DRAFT_LINES[${i}].priceVND=this.value;lineSummary()" title="${nd?'Nhập giá VND trực tiếp':'Giá VND = Giá USD × tỷ giá (có thể sửa)'}" style="${nd?'font-weight:600;border-color:var(--blue,#1a73e8)':''}">
+      <input class="num" placeholder="tỷ giá thuế" value="${nd?'':( N(l.fxTax)>0?N(l.fxTax):(l.fx||fxdef))}" ${dis} oninput="DRAFT_LINES[${i}].fxTax=N(this.value);lineSummary()">
+      <input class="num" placeholder="Thuế NK ₫" value="${nd?'':( N(l.dutyAmt)>0?Math.round(N(l.dutyAmt)):'')}" ${dis} oninput="DRAFT_LINES[${i}].dutyAmt=N(this.value);DRAFT_LINES[${i}].duty=0;lineSummary()">
+      <input class="num" placeholder="VAT NK ₫" value="${nd?'':( N(l.importVATAmt)>0?Math.round(N(l.importVATAmt)):'')}" ${dis} oninput="DRAFT_LINES[${i}].importVATAmt=N(this.value);lineSummary()">
+      <input class="num" placeholder="VAT %" value="${N(l.importVAT)>0?(N(l.importVAT)*100):10}" oninput="DRAFT_LINES[${i}].importVAT=this.value/100;lineSummary()" title="% VAT đầu vào">
+      <input placeholder="Tên trên HĐ bán…" value="${esc(defInvName)}" oninput="DRAFT_LINES[${i}].invoiceName=this.value" style="font-size:11px">
       <button class="del" onclick="DRAFT_LINES.splice(${i},1);renderLineEditor()">✕</button>
     </div>`;
   });
-  h+=`<button class="btn sm" onclick="DRAFT_LINES.push({product:'',qty:1,priceFC:0,fx:${fxdef},fxTax:0,priceVND:0,duty:0,dutyAmt:0,importVAT:0.1,importVATAmt:0});renderLineEditor()">+ Thêm dòng hàng</button>
-  <button class="btn ghost" style="margin-left:4px" onclick="downloadLineTemplate()">⬇ Template Excel</button>
-  <button class="btn" style="margin-left:4px" onclick="importLineExcel()">⬆ Nhập từ Excel</button>`;
+  const newImport=`{product:'',qty:1,priceFC:0,fx:${fxdef},fxTax:0,priceVND:0,duty:0,dutyAmt:0,importVAT:0.1,importVATAmt:0,domestic:false}`;
+  const newDomestic=`{product:'',qty:1,priceFC:0,fx:1,fxTax:0,priceVND:0,duty:0,dutyAmt:0,importVAT:0.1,importVATAmt:0,domestic:true}`;
+  h+=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
+    <button class="btn sm" onclick="DRAFT_LINES.push(${newImport});renderLineEditor()">+ 🌐 Dòng nhập khẩu</button>
+    <button class="btn sm" onclick="DRAFT_LINES.push(${newDomestic});renderLineEditor()">+ 🏭 Dòng nội địa</button>
+    <button class="btn ghost sm" onclick="downloadLineTemplate()">⬇ Template Excel</button>
+    <button class="btn sm" onclick="importLineExcel()">⬆ Nhập từ Excel</button>
+  </div>`;
   box.innerHTML=h; lineSummary();
 }
 function recalcVat(kind){
