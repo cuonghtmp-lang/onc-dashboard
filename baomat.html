@@ -334,38 +334,42 @@ function scheduleCloudSave(){
   _cloudSaveTimer = setTimeout(()=>cloudSave(true), 8000);
 }
 
+function _fbEndpoint(){
+  const base=(DB.settings.firebaseUrl||'').replace(/\/+$/,'');
+  const secret=DB.settings.firebaseSecret||'';
+  if(!base||!secret) return null;
+  return `${base}/onc.json?auth=${encodeURIComponent(secret)}`;
+}
+
 function cloudSave(silent){
-  const url = DB.settings.backupScriptUrl||'';
-  if(!url) return;
-  const key = DB.settings.backupKey||'onc2026';
+  const ep=_fbEndpoint();
+  if(!ep){ if(!silent) toast('Chưa cài Firebase URL — vào Thiết lập',true); return; }
   _cloudStatus='syncing'; _updateCloudDot();
-  if(!silent) toast('Đang đồng bộ lên cloud…');
-  fetch(url, {
-    method:'POST', mode:'no-cors',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({key, data: DB})
-  }).then(()=>{
-    _cloudStatus='ok'; _updateCloudDot();
-    if(!silent){ DB.settings.lastBackup=new Date().toISOString(); encStore(); toast('✓ Đã đồng bộ lên cloud'); }
-  }).catch(()=>{ _cloudStatus='err'; _updateCloudDot(); if(!silent) toast('Lỗi đồng bộ cloud',true); });
+  if(!silent) toast('Đang đồng bộ…');
+  fetch(ep,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(DB)})
+    .then(r=>r.ok?r.json():Promise.reject(r.status))
+    .then(()=>{
+      _cloudStatus='ok'; _updateCloudDot();
+      if(!silent){ DB.settings.lastBackup=new Date().toISOString(); encStore(); toast('✓ Đã đồng bộ lên cloud'); }
+    })
+    .catch(()=>{ _cloudStatus='err'; _updateCloudDot(); if(!silent) toast('Lỗi đồng bộ cloud',true); });
 }
 
 async function cloudLoad(){
-  const url = DB.settings.backupScriptUrl||'';
-  if(!url) return;
-  const key = DB.settings.backupKey||'onc2026';
+  const ep=_fbEndpoint();
+  if(!ep) return;
   try{
     _cloudStatus='syncing'; _updateCloudDot();
-    const res = await fetch(`${url}?action=load&key=${encodeURIComponent(key)}`);
-    const json = await res.json();
+    const res=await fetch(ep);
+    if(!res.ok) throw res.status;
+    const cloudDB=await res.json();
     _cloudStatus='ok'; _updateCloudDot();
-    if(!json.ok || !json.data) return;
-    const cloudDB = json.data;
-    const cloudTs = (cloudDB.settings&&cloudDB.settings.lastSaved)||'';
-    const localTs = (DB.settings&&DB.settings.lastSaved)||'';
-    if(cloudTs > localTs){
-      const diffMin = Math.round((new Date(cloudTs)-new Date(localTs))/60000);
-      _showCloudBanner(diffMin, cloudDB);
+    if(!cloudDB||!cloudDB.settings) return;
+    const cloudTs=cloudDB.settings.lastSaved||'';
+    const localTs=(DB.settings&&DB.settings.lastSaved)||'';
+    if(cloudTs>localTs){
+      const diffMin=Math.round((new Date(cloudTs)-new Date(localTs))/60000);
+      _showCloudBanner(diffMin,cloudDB);
     }
   }catch(e){ _cloudStatus='err'; _updateCloudDot(); }
 }
@@ -2719,16 +2723,20 @@ function vSettings(){
     <div class="fld"><label>&nbsp;</label><div class="hint">${s.lockDate?('Đang khóa đến <b>'+dshow(s.lockDate)+'</b>.'):'Chưa khóa kỳ nào.'} Nên khóa sau khi chốt sổ mỗi tháng.</div></div>
   </div></div></div>
 
-  <div class="panel" style="margin-top:12px"><div class="ph"><h3>☁ Backup tự động (Google Drive &amp; Sheets)</h3></div><div style="padding:14px 16px">
+  <div class="panel" style="margin-top:12px"><div class="ph"><h3>☁ Đồng bộ đa thiết bị (Firebase Realtime Database)</h3></div><div style="padding:14px 16px">
+    <div class="alert g" style="margin:0 0 12px"><span class="ic">i</span><div>Miễn phí · Không cold-start · Tốc độ ~100ms. <a href="https://console.firebase.google.com" target="_blank">Tạo Firebase project</a> → Realtime Database → lấy URL và Database secret.</div></div>
     <div class="flds">
-      <div class="fld full"><label>Apps Script URL <a href="https://raw.githubusercontent.com/cuonghtmp-lang/onc-dashboard/main/ONC_AppScript.js" target="_blank" style="font-size:11px;margin-left:8px">📥 Tải code script</a></label>
-        <input id="s_bkurl" placeholder="https://script.google.com/macros/s/AKfy.../exec" value="${esc(DB.settings.backupScriptUrl||'')}">
-        <div class="hint">Deploy Apps Script → paste Web App URL vào đây → bấm "☁ Backup" trong menu Sao lưu</div>
+      <div class="fld full"><label>Firebase Database URL</label>
+        <input id="s_fburl" placeholder="https://your-project-default-rtdb.asia-southeast1.firebasedatabase.app" value="${esc(DB.settings.firebaseUrl||'')}">
+        <div class="hint">Lấy từ Firebase Console → Realtime Database → Data tab</div>
       </div>
-      <div class="fld"><label>Khóa bí mật (SECRET_KEY)</label>
-        <input id="s_bkkey" value="${esc(DB.settings.backupKey||'onc2026')}">
-        <div class="hint">Phải khớp với SECRET_KEY trong script</div>
+      <div class="fld full"><label>Database Secret (auth token)</label>
+        <input id="s_fbsecret" type="password" placeholder="Legacy database secret key" value="${esc(DB.settings.firebaseSecret||'')}">
+        <div class="hint">Firebase Console → Project settings → Service accounts → Database secrets</div>
       </div>
+    </div>
+    <div style="margin-top:10px;display:flex;gap:8px">
+      <button class="btn sm" onclick="cloudSave(false)">☁ Test kết nối</button>
     </div>
   </div></div>
 
@@ -2745,8 +2753,8 @@ function saveSettings(){
   s.exchangeRate=N($('#s_fx').value); s.margin=N($('#s_margin').value)/100; s.vatSale=N($('#s_vat').value)/100;
   s.finRate=N($('#s_fin').value)/100; s.sgaRate=N($('#s_sga').value)/100; s.contRate=N($('#s_cont').value)/100;
   s.custDays=N($('#s_cd').value); s.suppDays=N($('#s_sd').value); s.periodStart=$('#s_ps').value; s.periodEnd=$('#s_pe').value;
-  if($('#s_bkurl')) s.backupScriptUrl=$('#s_bkurl').value.trim();
-  if($('#s_bkkey')) s.backupKey=$('#s_bkkey').value.trim()||'onc2026';
+  if($('#s_fburl')) s.firebaseUrl=$('#s_fburl').value.trim();
+  if($('#s_fbsecret')) s.firebaseSecret=$('#s_fbsecret').value.trim();
   s.company=$('#s_company').value.trim(); s.address=$('#s_addr').value.trim(); s.taxCode=$('#s_tax').value.trim();
   s.phone=$('#s_phone').value.trim(); s.email=$('#s_email').value.trim(); s.website=$('#s_web').value.trim();
   s.bank=$('#s_bank').value.trim(); s.repName=$('#s_rep').value.trim(); s.repTitle=$('#s_reptitle').value.trim();
@@ -2795,7 +2803,7 @@ function vBackup(){
   periodChip();
   const counts=`${DB.products.length} SP · ${DB.suppliers.length} NCC · ${DB.customers.length} KH · ${DB.orders.length} đơn nhập · ${DB.lines.length} dòng hàng · ${DB.sales.length} dòng bán · ${DB.opex.length} chi phí · ${DB.cash.length} thu chi`;
   const lastBk = DB.settings.lastBackup ? new Date(DB.settings.lastBackup).toLocaleString('vi-VN') : 'Chưa có';
-  const hasScript = !!(DB.settings.backupScriptUrl);
+  const hasScript = !!(DB.settings.firebaseUrl && DB.settings.firebaseSecret);
   $('#view').innerHTML=`
   <div class="panel"><div class="ph"><h2>Sao lưu &amp; khôi phục</h2></div><div style="padding:18px 20px">
     <div class="alert g" style="margin:0 0 16px"><span class="ic">✓</span><div>Dữ liệu được lưu tự động trong trình duyệt này. Để an toàn, hãy <b>Xuất file sao lưu</b> định kỳ và cất giữ.</div></div>
