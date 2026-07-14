@@ -2837,41 +2837,34 @@ function exportExcel(){
     const blob=new Blob(['\ufeff'+xml],{type:'application/vnd.ms-excel'});
     const url=URL.createObjectURL(blob); const a=document.createElement('a');
     a.href=url; a.download='ONC_backup_'+todayISO()+'.xls'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-    toast('Đã xuất Excel — tải lên Google Drive rồi mở bằng Google Sheets');
+    toast('Đã xuất file Excel (.xls)');
   }catch(err){ toast('Lỗi xuất Excel: '+err.message, true); }
 }
 function vBackup(){
   periodChip();
   const counts=`${DB.products.length} SP · ${DB.suppliers.length} NCC · ${DB.customers.length} KH · ${DB.orders.length} đơn nhập · ${DB.lines.length} dòng hàng · ${DB.sales.length} dòng bán · ${DB.opex.length} chi phí · ${DB.cash.length} thu chi`;
   const lastBk = DB.settings.lastBackup ? new Date(DB.settings.lastBackup).toLocaleString('vi-VN') : 'Chưa có';
-  const hasScript = !!(DB.settings.supabaseUrl && DB.settings.supabaseKey);
   $('#view').innerHTML=`
   <div class="panel"><div class="ph"><h2>Sao lưu &amp; khôi phục</h2></div><div style="padding:18px 20px">
-    <div class="alert g" style="margin:0 0 16px"><span class="ic">✓</span><div>Dữ liệu được lưu tự động trong trình duyệt này. Để an toàn, hãy <b>Xuất file sao lưu</b> định kỳ và cất giữ.</div></div>
     <p style="color:var(--ink2);margin:0 0 6px">Dữ liệu hiện tại:</p>
     <p class="num" style="color:var(--muted);margin:0 0 18px;font-size:12.5px">${counts}</p>
     <div style="background:var(--surface2);border-radius:10px;padding:14px 16px;margin-bottom:16px">
-      <div style="font-weight:600;margin-bottom:10px">☁ Đồng bộ đa thiết bị (Google Drive)</div>
+      <div style="font-weight:600;margin-bottom:10px">☁ Đồng bộ đa thiết bị (Supabase Cloud)</div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Lần sync cuối: <b>${lastBk}</b> · Dữ liệu tự động đẩy lên cloud sau mỗi lần lưu (8 giây).</div>
-      ${hasScript
-        ? `<div style="display:flex;gap:8px;flex-wrap:wrap">
-             <button class="btn pri" onclick="cloudSave(false)">☁ Đẩy lên cloud ngay</button>
-             <button class="btn" onclick="cloudLoad()">⬇ Tải từ cloud</button>
-           </div>`
-        : `<div class="alert a" style="margin:0 0 10px"><span class="ic">i</span><div>Chưa cài Apps Script URL. Vào <b>Thiết lập</b> → nhập URL Script để bật tính năng này.</div></div>
-           <button class="btn ghost" onclick="go('settings')">→ Vào Thiết lập để cài URL</button>`
-      }
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn pri" onclick="cloudSave(false)">☁ Đẩy lên cloud ngay</button>
+        <button class="btn" onclick="cloudLoad()">⬇ Tải từ cloud</button>
+      </div>
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <button class="btn" onclick="exportJSON()">⬇ Xuất file sao lưu (.json)</button>
-      <button class="btn" onclick="exportExcel()">⬇ Xuất Excel cho Google Sheets</button>
+      <button class="btn" onclick="exportExcel()">⬇ Xuất Excel (.xlsx)</button>
       <button class="btn" onclick="exportCSV()">⬇ Xuất bán hàng (.csv)</button>
       <button class="btn danger" onclick="resetToBlank()" style="margin-left:auto">🗑 Đưa về bảng trắng</button>
       <label class="btn" style="cursor:pointer">⬆ Nhập file sao lưu<input type="file" accept=".json" style="display:none" onchange="importJSON(this)"></label>
       <button class="btn danger" onclick="resetAll()">↺ Đặt lại về dữ liệu gốc</button>
     </div>
-  </div></div>
-  <div class="alert a" style="margin:0"><span class="ic">i</span><div>Khi mở file này trên một máy/trình duyệt khác, hãy dùng <b>Nhập file sao lưu</b> để mang dữ liệu sang.</div></div>`;
+  </div></div>`;
 }
 function exportJSON(){
   const blob=new Blob([JSON.stringify(DB,null,1)],{type:'application/json'});
