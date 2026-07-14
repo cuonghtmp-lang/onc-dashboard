@@ -2762,9 +2762,9 @@ function vSettings(){
         <input id="s_sburl" placeholder="https://xxxxxxxxxxxx.supabase.co" value="${esc(DB.settings.supabaseUrl||'')}">
         <div class="hint">Supabase Dashboard → Settings → API → Project URL</div>
       </div>
-      <div class="fld full"><label>Anon Public Key</label>
-        <input id="s_sbkey" type="password" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." value="${esc(DB.settings.supabaseKey||'')}">
-        <div class="hint">Supabase Dashboard → Settings → API → anon public</div>
+      <div class="fld full"><label>Service Role Key</label>
+        <input id="s_sbkey" type="password" placeholder="sb_secret_..." value="${esc(DB.settings.supabaseKey||'')}">
+        <div class="hint">Supabase Dashboard → Settings → API → service_role → Reveal</div>
       </div>
     </div>
     <div style="margin-top:10px;display:flex;gap:8px">
