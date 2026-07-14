@@ -321,6 +321,7 @@ let saveTimer=null;
 let saveFailed=false;
 let _cloudSaveTimer=null;
 let _cloudStatus='idle'; // idle | syncing | ok | err
+let _pollInterval=null;
 
 function save(){
   if(!DB.settings.lastSaved) DB.settings.lastSaved='';
@@ -331,7 +332,7 @@ function save(){
 
 function scheduleCloudSave(){
   clearTimeout(_cloudSaveTimer);
-  _cloudSaveTimer = setTimeout(()=>cloudSave(true), 8000);
+  _cloudSaveTimer = setTimeout(()=>{ _cloudSaveTimer=null; cloudSave(true); }, 3000);
 }
 
 const _SB_URL='https://cwswsqvtahfeqgpznsgy.supabase.co';
@@ -380,6 +381,27 @@ async function cloudLoad(){
       _showCloudBanner(diffMin,cloudDB);
     }
   }catch(e){ console.error('[ONC] cloudLoad lỗi:',e); _cloudStatus='err'; _updateCloudDot(); }
+}
+
+async function _pollCloud(){
+  // Bỏ qua nếu đang chờ save lên cloud (tránh ghi đè dữ liệu vừa nhập)
+  if(_cloudSaveTimer) return;
+  const url=_SB_URL+'/rest/v1/onc_data?key=eq.onc_main&select=data,updated_at';
+  try{
+    const res=await fetch(url,{headers:_sbHeaders()});
+    if(!res.ok) return;
+    const rows=await res.json();
+    if(!rows||!rows.length||!rows[0].data) return;
+    const cloudDB=rows[0].data;
+    if(!cloudDB||!cloudDB.settings) return;
+    const cloudTs=cloudDB.settings.lastSaved||'';
+    const localTs=(DB.settings&&DB.settings.lastSaved)||'';
+    if(cloudTs>localTs){
+      DB=cloudDB; normalizeDB(); await encStore(); refresh();
+      _cloudStatus='ok'; _updateCloudDot();
+      toast('☁ Đã nhận dữ liệu mới từ thiết bị khác');
+    }
+  }catch(e){ /* silent */ }
 }
 
 function _showCloudBanner(diffMin, cloudDB){
@@ -2954,7 +2976,13 @@ async function _derive(pw,salt){const km=await crypto.subtle.importKey('raw',new
 async function encStore(){if(!CRYPTO_KEY)return;try{const iv=crypto.getRandomValues(new Uint8Array(12));const data=new TextEncoder().encode(JSON.stringify(DB));const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},CRYPTO_KEY,data);const out=new Uint8Array(iv.length+ct.byteLength);out.set(iv,0);out.set(new Uint8Array(ct),iv.length);localStorage.setItem(ENC_KEY,_b64(out.buffer));saveFailed=false;flagSaved('Đã lưu (mã hóa)');}catch(e){flagSaved('KHÔNG lưu được');if(!saveFailed){saveFailed=true;toast('Không lưu được!',true);}}}
 async function _decrypt(pw){const salt=_ub64(localStorage.getItem(SALT_KEY));const key=await _derive(pw,salt);const blob=_ub64(localStorage.getItem(ENC_KEY));const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:blob.slice(0,12)},key,blob.slice(12));const db=JSON.parse(new TextDecoder().decode(pt));CRYPTO_KEY=key;return db;}
 async function lkGo(){const p2el=document.getElementById('lkPw2');const setup=p2el.style.display!=='none';const pw=document.getElementById('lkPw').value;const err=document.getElementById('lkErr');err.textContent='';if(pw.length<4){err.textContent='Mật khẩu tối thiểu 4 ký tự.';return;}if(setup){if(pw!==p2el.value){err.textContent='Hai lần nhập không khớp.';return;}const salt=crypto.getRandomValues(new Uint8Array(16));localStorage.setItem(SALT_KEY,_b64(salt.buffer));CRYPTO_KEY=await _derive(pw,salt);let plain=null;try{const s=localStorage.getItem(KEY);if(s)plain=JSON.parse(s);}catch(e){}DB=plain||JSON.parse(JSON.stringify(SEED));normalizeDB();await encStore();try{localStorage.removeItem(KEY);}catch(e){}_startApp();}else{try{DB=await _decrypt(pw);normalizeDB();_startApp();}catch(e){err.textContent='Sai mật khẩu.';}}}
-function _startApp(){const l=document.getElementById('lock');if(l)l.style.display='none';renderNav();go('dashboard');setTimeout(()=>cloudLoad(),1500);}
+function _startApp(){
+  const l=document.getElementById('lock');if(l)l.style.display='none';
+  renderNav();go('dashboard');
+  setTimeout(()=>cloudLoad(),1500);
+  if(_pollInterval) clearInterval(_pollInterval);
+  _pollInterval=setInterval(_pollCloud,30000); // tự kiểm tra dữ liệu mới mỗi 30 giây
+}
 function lockNow(){CRYPTO_KEY=null;location.reload();}
 async function changePw(){const oldp=prompt('Mật khẩu hiện tại:');if(!oldp)return;try{await _decrypt(oldp);}catch(e){toast('Sai mật khẩu',true);return;}const n1=prompt('Mật khẩu MỚI:');if(!n1||n1.length<4){toast('Không hợp lệ',true);return;}const n2=prompt('Nhập lại:');if(n1!==n2){toast('Không khớp',true);return;}const salt=crypto.getRandomValues(new Uint8Array(16));localStorage.setItem(SALT_KEY,_b64(salt.buffer));CRYPTO_KEY=await _derive(n1,salt);await encStore();toast('Đã đổi mật khẩu');}
 function bootSecure(){const has=localStorage.getItem(ENC_KEY);
