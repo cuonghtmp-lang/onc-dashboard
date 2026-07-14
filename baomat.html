@@ -365,10 +365,31 @@ async function cloudLoad(){
     const localTs = (DB.settings&&DB.settings.lastSaved)||'';
     if(cloudTs > localTs){
       const diffMin = Math.round((new Date(cloudTs)-new Date(localTs))/60000);
-      const ok = confirm(`☁ Cloud có dữ liệu mới hơn ${diffMin} phút.\nTải về thay thế dữ liệu thiết bị này?`);
-      if(ok){ DB=cloudDB; normalizeDB(); await encStore(); refresh(); toast('✓ Đã tải dữ liệu mới nhất từ cloud'); }
+      _showCloudBanner(diffMin, cloudDB);
     }
   }catch(e){ _cloudStatus='err'; _updateCloudDot(); }
+}
+
+function _showCloudBanner(diffMin, cloudDB){
+  const existing = document.getElementById('cloudBanner');
+  if(existing) existing.remove();
+  const div = document.createElement('div');
+  div.id = 'cloudBanner';
+  div.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--blue,#1a73e8);color:#fff;padding:12px 18px;border-radius:10px;z-index:9999;display:flex;align-items:center;gap:12px;box-shadow:0 4px 16px rgba(0,0,0,.25);font-size:13.5px;max-width:420px';
+  div.innerHTML=`<span>☁ Cloud có dữ liệu mới hơn <b>${diffMin} phút</b></span>
+    <button onclick="_applyCloudDB()" style="background:#fff;color:#1a73e8;border:none;border-radius:6px;padding:5px 12px;font-weight:600;cursor:pointer">Tải về</button>
+    <button onclick="document.getElementById('cloudBanner').remove()" style="background:transparent;color:#fff;border:none;cursor:pointer;font-size:16px">✕</button>`;
+  document.body.appendChild(div);
+  window._pendingCloudDB = cloudDB;
+  setTimeout(()=>{ const b=document.getElementById('cloudBanner'); if(b) b.remove(); }, 30000);
+}
+
+async function _applyCloudDB(){
+  const b=document.getElementById('cloudBanner'); if(b) b.remove();
+  if(!window._pendingCloudDB) return;
+  DB=window._pendingCloudDB; window._pendingCloudDB=null;
+  normalizeDB(); await encStore(); refresh();
+  toast('✓ Đã tải dữ liệu mới nhất từ cloud');
 }
 
 function _updateCloudDot(){
