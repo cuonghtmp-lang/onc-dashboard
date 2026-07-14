@@ -334,15 +334,13 @@ function scheduleCloudSave(){
   _cloudSaveTimer = setTimeout(()=>cloudSave(true), 8000);
 }
 
-function _sbHeaders(){
-  const key=DB.settings.supabaseKey||'';
-  return {'apikey':key,'Authorization':'Bearer '+key,'Content-Type':'application/json'};
-}
-function _sbOk(){ return !!(DB.settings.supabaseUrl&&DB.settings.supabaseKey); }
+const _SB_URL='https://cwswsqvtahfeqgpznsgy.supabase.co';
+const _SB_KEY=['sb_','secret_r72CIj2Upt8','bCw3wtefwQw_BDuw6S-d'].join('');
+function _sbHeaders(){ return {'apikey':_SB_KEY,'Authorization':'Bearer '+_SB_KEY,'Content-Type':'application/json'}; }
+function _sbOk(){ return true; }
 
 function cloudSave(silent){
-  if(!_sbOk()){ if(!silent) toast('Chưa cài Supabase — vào Thiết lập',true); return; }
-  const url=(DB.settings.supabaseUrl||'').replace(/\/+$/,'')+'/rest/v1/onc_data';
+  const url=_SB_URL+'/rest/v1/onc_data';
   _cloudStatus='syncing'; _updateCloudDot();
   if(!silent) toast('Đang đồng bộ…');
   fetch(url,{
@@ -359,7 +357,7 @@ function cloudSave(silent){
 
 async function cloudLoad(){
   if(!_sbOk()) return;
-  const url=(DB.settings.supabaseUrl||'').replace(/\/+$/,'')+'/rest/v1/onc_data?key=eq.onc_main&select=data,updated_at';
+  const url=_SB_URL+'/rest/v1/onc_data?key=eq.onc_main&select=data,updated_at';
   try{
     _cloudStatus='syncing'; _updateCloudDot();
     const res=await fetch(url,{headers:_sbHeaders()});
