@@ -1250,14 +1250,34 @@ function onSupChange(){ const sup=$('#f_sup').value; const el=$('#f_code'); if(!
 function quickPayOrder(orderCode, kind, party){
   const open=payableItems().filter(it=>it.order===orderCode&&it.kind===kind&&it.party===party).reduce((a,it)=>a+it.open,0);
   if(!(open>0.5)){ toast('Không còn số tiền cần tạo lệnh',true); return; }
-  const kindLabel=k=>k==='hàng'?'Tiền hàng':k.includes('quốc tế')?'VC quốc tế':k.includes('nội địa')?'VC nội địa':'Vận chuyển';
-  const note=(kind==='hàng'?'Thanh toán tiền hàng':'Thanh toán '+kindLabel(kind).toLowerCase())+' đơn '+orderCode;
+  const kl=k=>k==='hàng'?'Tiền hàng':k.includes('quốc tế')?'VC quốc tế':k.includes('nội địa')?'VC nội địa':'Vận chuyển';
+  const note=(kind==='hàng'?'Thanh toán tiền hàng':'Thanh toán '+kl(kind).toLowerCase())+' đơn '+orderCode;
   const obj={id:nid(),code:nextPOrderCode(),date:todayISO(),order:orderCode,party,
     amount:Math.round(open),dueDate:'',status:'draft',paidDate:'',bankRef:'',
     approvedBy:'',approvedAt:'',rejectReason:'',note};
   DB.porders.push(obj); save();
   fillPayInfo(orderCode);
   toast('✓ Đã tạo lệnh '+obj.code+' · Chờ duyệt');
+}
+
+function quickPayAll(orderCode){
+  const kl=k=>k==='hàng'?'Tiền hàng':k.includes('quốc tế')?'VC quốc tế':k.includes('nội địa')?'VC nội địa':'Vận chuyển';
+  const items=payableItems().filter(it=>it.order===orderCode&&it.open>0.5);
+  if(!items.length){ toast('Không có khoản nào cần thanh toán',true); return; }
+  const created=[];
+  items.forEach(it=>{
+    const pending=(DB.porders||[]).filter(p=>p.party===it.party&&p.order===orderCode&&(p.status==='draft'||p.status==='approved')).reduce((a,p)=>a+p.amount,0);
+    const eff=Math.max(0,Math.round(it.open-pending));
+    if(eff<1) return;
+    const note=(it.kind==='hàng'?'Thanh toán tiền hàng':'Thanh toán '+kl(it.kind).toLowerCase())+' đơn '+orderCode;
+    const obj={id:nid(),code:nextPOrderCode(),date:todayISO(),order:orderCode,party:it.party,
+      amount:eff,dueDate:'',status:'draft',paidDate:'',bankRef:'',
+      approvedBy:'',approvedAt:'',rejectReason:'',note};
+    DB.porders.push(obj); created.push(obj.code);
+  });
+  if(!created.length){ toast('Tất cả khoản đã có lệnh đang xử lý',true); return; }
+  save(); refresh();
+  toast('✓ Đã tạo '+created.length+' lệnh: '+created.join(', ')+' · Chờ duyệt');
 }
 function poParties(oc){
   const o=ordOf(oc); if(!o)return [];
@@ -2111,6 +2131,7 @@ function editCustomer(code){
 /* ----- ORDERS ----- */
 function vOrders(){
   periodChip();
+  const allPay=payableItems();
   let html=`<div class="panel flush"><div class="ph"><h2>Đơn nhập khẩu (${DB.orders.length})</h2><div class="spacer"></div><button class="btn pri" onclick="editOrder()">+ Đơn nhập mới</button></div><div class="wrap"><table class="tbl"><thead><tr><th>Mã đơn</th><th>Nhà cung cấp</th><th class="c">Trạng thái</th><th class="r">SL</th><th class="r">Giá trị nhập kho</th><th class="c">Thanh toán</th><th class="c">Hồ sơ</th><th></th></tr></thead><tbody>`;
   if(!DB.orders.length) html+=emptyRow(8,'⤓','Chưa có đơn nhập');
   DB.orders.forEach(o=>{
@@ -2119,6 +2140,12 @@ function vOrders(){
     const dp=docPct(o); const dc=docCount(o);
     const ps=orderPayStatus(o.code);
     const payTag = ps.status==='paid'?'<span class="tag g">Đã trả</span>' : ps.status==='partial'?'<span class="tag a">Trả một phần</span>' : ps.status==='unpaid'?'<span class="tag r">Chưa trả</span>' : '<span class="mut">—</span>';
+    // Nút tạo lệnh TT: chỉ hiện khi còn khoản chưa có lệnh bao phủ
+    const openItems=allPay.filter(it=>it.order===o.code&&it.open>0.5);
+    const needLTT=openItems.some(it=>{
+      const pending=(DB.porders||[]).filter(p=>p.party===it.party&&p.order===o.code&&(p.status==='draft'||p.status==='approved')).reduce((a,p)=>a+p.amount,0);
+      return it.open-pending>0.5;
+    });
     html+=`<tr>
       <td><span class="code">${esc(o.code)}</span><div class="mut" style="font-size:11px">${esc(o.invoice||o.pi||'')}</div></td>
       <td>${esc(sup?sup.name:o.supplier)}${o.carrier?`<div class="mut" style="font-size:11px">🌐 VC QT: ${esc(o.carrier)}</div>`:''}${o.domesticCarrier?`<div class="mut" style="font-size:11px">🚛 VC NĐ: ${esc(o.domesticCarrier)}</div>`:''}</td>
@@ -2127,7 +2154,8 @@ function vOrders(){
       <td class="r num">${fmt(c.inbound)}</td>
       <td class="c">${payTag}${ps.open>0.5?`<div class="mut" style="font-size:11px">còn ${fmt(ps.open)}</div>`:''}</td>
       <td class="c"><div style="display:flex;align-items:center;gap:6px;justify-content:center" title="${dc.done}/${dc.applicable} hoàn thành · ${dc.na} không dùng"><div class="bar" style="width:54px"><i style="width:${(dp*100).toFixed(0)}%;background:${dp>=1?'var(--green)':'var(--amber)'}"></i></div><span class="num mut" style="font-size:11px">${dc.done}/${dc.applicable}</span></div></td>
-      <td class="r act"><button class="btn sm ghost" onclick='editOrder(${JSON.stringify(o.code)})'>Mở</button> <button class="btn sm danger" onclick='delOrder(${JSON.stringify(o.code)})'>Xóa</button></td></tr>`;
+      <td class="r act">${needLTT?`<button class="btn sm pri" style="padding:3px 10px" onclick='quickPayAll(${JSON.stringify(o.code)})' title="Tạo lệnh thanh toán cho tất cả khoản còn nợ">+ Lệnh TT</button> `:''}
+        <button class="btn sm ghost" onclick='editOrder(${JSON.stringify(o.code)})'>Mở</button> <button class="btn sm danger" onclick='delOrder(${JSON.stringify(o.code)})'>Xóa</button></td></tr>`;
   });
   html+=`</tbody></table></div></div>`;
   $('#view').innerHTML=html;
