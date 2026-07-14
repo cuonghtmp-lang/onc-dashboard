@@ -1159,6 +1159,8 @@ function deliverSO(id){
 
 /* ---------------- LỆNH THANH TOÁN ---------------- */
 function nextPOrderCode(){ const pre='LTT-'+todayISO().replace(/-/g,'').slice(2)+'-'; let n=1,code; do{code=pre+String(n).padStart(2,'0');n++;}while((DB.porders||[]).some(p=>p.code===code)); return code; }
+function nextOrderCode(suppCode){ const d=todayISO().replace(/-/g,'').slice(2,6); const pre='PUR-'+d+'-'+(suppCode||'ORD')+'-'; let n=1,code; do{code=pre+String(n).padStart(3,'0');n++;}while((DB.orders||[]).some(o=>o.code===code)); return code; }
+function onSupChange(){ const sup=$('#f_sup').value; const el=$('#f_code'); if(!el||!sup)return; if(!el.value||el.dataset.auto==='1'){el.value=nextOrderCode(sup);el.dataset.auto='1';} }
 function poParties(oc){
   const o=ordOf(oc); if(!o)return [];
   const arr=[];
@@ -2043,8 +2045,8 @@ function editOrder(code){
   openModal((code?'Đơn nhập '+code:'Đơn nhập mới'),`
     <div class="grid">
       <div class="section-t">Thông tin đơn</div>
-      <div class="fld"><label>Mã đơn hàng <span class="req">*</span></label><input id="f_code" value="${esc(o.code)}" ${code?'disabled':''}><div class="err">Bắt buộc, không trùng.</div></div>
-      <div class="fld"><label>Nhà cung cấp <span class="req">*</span></label><select id="f_sup"><option value="">— chọn —</option>${supOpts}</select><div class="err">Chọn nhà cung cấp.</div></div>
+      <div class="fld"><label>Mã đơn hàng <span class="req">*</span></label><input id="f_code" value="${esc(o.code)}" oninput="delete this.dataset.auto"><div class="err">Bắt buộc, không trùng.</div></div>
+      <div class="fld"><label>Nhà cung cấp <span class="req">*</span></label><select id="f_sup" onchange="onSupChange()"><option value="">— chọn —</option>${supOpts}</select><div class="err">Chọn nhà cung cấp.</div></div>
       <div class="fld"><label>Số PI / Báo giá</label><input id="f_pi" value="${esc(o.pi)}"></div>
       <div class="fld"><label>Số hóa đơn TM</label><input id="f_inv" value="${esc(o.invoice)}"></div>
       <div class="fld"><label>Điều kiện giao hàng</label><select id="f_inco">${['EXW','FOB','CIF','DAP','DDP'].map(x=>`<option ${o.incoterm===x?'selected':''}>${x}</option>`).join('')}</select></div>
@@ -2074,6 +2076,7 @@ function editOrder(code){
         </div>
         <div class="dt-note" style="margin:2px 0 6px">Tiền VAT vận chuyển được đưa vào VAT đầu vào (khấu trừ), không cộng vào giá vốn.</div>
       </div>
+      <div class="fld"><label>Phí thông quan HQ</label><input class="num" id="f_customs" value="${o.customs||0}" oninput="lineSummary()"><div class="hint">Chi phí dịch vụ khai báo hải quan (không gồm thuế NK/VAT NK từng dòng hàng).</div></div>
       <div class="fld"><label>Phí ngân hàng</label><input class="num" id="f_bank" value="${o.bankFee}" oninput="lineSummary()"></div>
       <div class="fld"><label>Bảo hiểm</label><input class="num" id="f_ins" value="${o.insurance}" oninput="lineSummary()"></div>
       <div class="fld"><label>Chi phí khác</label><input class="num" id="f_other" value="${o.other}" oninput="lineSummary()"></div>
@@ -2094,13 +2097,13 @@ function editOrder(code){
     </div>`,()=>{
       const c=$('#f_code').value.trim(), sup=$('#f_sup').value;
       let ok=true;
-      if(!c||(!code&&ordOf(c))){bad('f_code');ok=false;}
+      if(!c||(ordOf(c)&&c!==code)){bad('f_code');ok=false;}
       if(!sup){bad('f_sup');ok=false;}
       if(!ok)return false;
       const docs={}; document.querySelectorAll('#docGrid input').forEach(i=>{ if(i.checked) docs[i.dataset.k]=i.dataset.v; });
       const obj={code:c,pi:$('#f_pi').value.trim(),invoice:$('#f_inv').value.trim(),supplier:sup,incoterm:$('#f_inco').value,
         datePI:$('#f_dpi').value,dateShip:$('#f_dship').value,dateETA:$('#f_deta').value,dateWH:$('#f_dwh').value,
-        note:o.note||'',freight:N($('#f_freight').value),customs:N(o.customs),domestic:N($('#f_domestic').value),
+        note:o.note||'',freight:N($('#f_freight').value),customs:N($('#f_customs').value),domestic:N($('#f_domestic').value),
         insurance:N($('#f_ins').value),bankFee:N($('#f_bank').value),other:N($('#f_other').value),
         freightVat:N($('#f_freightVat').value)/100,freightVatAmt:N($('#f_freightVatAmt').value),
         domesticVat:N($('#f_domesticVat').value)/100,domesticVatAmt:N($('#f_domesticVatAmt').value),
@@ -2282,7 +2285,7 @@ function lineSummary(){
   const fx=N(DB.settings.exchangeRate);
   let totVal=0,totQty=0;
   DRAFT_LINES.forEach(l=>{ const fxl=N(l.fx)>0?N(l.fx):fx; const pv=N(l.priceVND)>0?N(l.priceVND):N(l.priceFC)*fxl; totVal+=N(l.qty)*pv; totQty+=N(l.qty); });
-  const extra=N($('#f_freight').value)+N($('#f_domestic').value)+N($('#f_ins').value)+N($('#f_bank').value)+N($('#f_other').value);
+  const extra=N($('#f_freight').value)+N($('#f_customs')?$('#f_customs').value:0)+N($('#f_domestic').value)+N($('#f_ins').value)+N($('#f_bank').value)+N($('#f_other').value);
   const vatIn=N($('#f_freightVatAmt').value)+N($('#f_domesticVatAmt').value);
   box.innerHTML=`<div class="alert g"><span class="ic">∑</span><div>Tổng SL: <b class="num">${fmt(totQty)}</b> · Giá trị hàng: <b class="num">${fmt(totVal)} ₫</b> · CP ngoài hàng: <b class="num">${fmt(extra)} ₫</b> · <b>Giá trị nhập kho: <span class="num">${fmt(totVal+extra)} ₫</span></b>${vatIn?` · VAT vận chuyển (khấu trừ): <b class="num">${fmt(vatIn)} ₫</b>`:''}</div></div>`;
 }
