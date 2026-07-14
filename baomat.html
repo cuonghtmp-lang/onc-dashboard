@@ -472,7 +472,8 @@ function normalizeDB(){
     termPayment:'Thanh toán bằng chuyển khoản trong vòng 30 ngày kể từ ngày nhận hàng và hóa đơn.',
     termWarranty:'Hàng chính hãng, bảo hành theo tiêu chuẩn nhà sản xuất.',lockDate:'',
     supabaseUrl:'https://cwswsqvtahfeqgpznsgy.supabase.co',
-    supabaseKey:'sb_publishable_ajJ4-1PpV4aO_8W0gbVjQA_ia10O6CU'};
+    supabaseKey:'sb_publishable_ajJ4-1PpV4aO_8W0gbVjQA_ia10O6CU',
+    driveScriptUrl:'',lastDriveBackup:''};
   Object.keys(defs).forEach(k=>{ if(s[k]==null) s[k]=defs[k]; });
   if(!s.supabaseUrl) s.supabaseUrl='https://cwswsqvtahfeqgpznsgy.supabase.co';
   if(!s.supabaseKey) s.supabaseKey='sb_publishable_ajJ4-1PpV4aO_8W0gbVjQA_ia10O6CU';
@@ -2739,6 +2740,31 @@ function vPriceList(){
 
 /* ----- SETTINGS ----- */
 
+// ── Google Drive backup qua Apps Script ──────────────────────────
+async function driveBackup(silent){
+  const url=(DB.settings.driveScriptUrl||'').trim();
+  if(!url){ if(!silent) toast('Chưa cài URL Apps Script — vào Thiết lập',true); return; }
+  if(!silent) toast('Đang backup lên Google Drive…');
+  try{
+    const res=await fetch(url,{
+      method:'POST',
+      body:JSON.stringify({key:'onc2026',data:DB}),
+      headers:{'Content-Type':'text/plain'}
+    });
+    const js=await res.json();
+    if(js.ok){
+      DB.settings.lastDriveBackup=new Date().toISOString(); encStore();
+      if(!silent) toast('✓ Đã backup lên Google Drive: '+js.file);
+    } else { if(!silent) toast('Lỗi Drive: '+(js.error||'unknown'),true); }
+  }catch(e){ if(!silent) toast('Lỗi kết nối Drive',true); }
+}
+
+function _autoDriveBackupIfNeeded(){
+  const url=(DB.settings.driveScriptUrl||'').trim(); if(!url) return;
+  const last=DB.settings.lastDriveBackup||'';
+  if(!last||new Date()-new Date(last)>86400000) driveBackup(true); // 24h
+}
+
 // ── Giữ lại để tương thích — redirect sang cloudSave ─────────────
 function autoBackup(){ cloudSave(false); }
 
@@ -2786,20 +2812,29 @@ function vSettings(){
   </div></div></div>
 
   <div class="panel" style="margin-top:12px"><div class="ph"><h3>☁ Đồng bộ đa thiết bị (Supabase)</h3></div><div style="padding:14px 16px">
-    <div class="alert g" style="margin:0 0 12px"><span class="ic">i</span><div>Miễn phí · ~50ms · Tự động sync sau mỗi lần lưu. <a href="https://supabase.com" target="_blank">supabase.com</a> → New project → SQL Editor → chạy lệnh tạo bảng (xem hướng dẫn).</div></div>
     <div class="flds">
       <div class="fld full"><label>Supabase Project URL</label>
         <input id="s_sburl" placeholder="https://xxxxxxxxxxxx.supabase.co" value="${esc(DB.settings.supabaseUrl||'')}">
-        <div class="hint">Supabase Dashboard → Settings → API → Project URL</div>
       </div>
       <div class="fld full"><label>Anon / Publishable Key</label>
         <input id="s_sbkey" type="password" placeholder="sb_publishable_..." value="${esc(DB.settings.supabaseKey||'')}">
-        <div class="hint">Supabase Dashboard → Settings → API → anon / public key</div>
       </div>
     </div>
     <div style="margin-top:10px;display:flex;gap:8px">
       <button class="btn sm pri" onclick="saveSettings();cloudSave(false)">☁ Test kết nối</button>
       <button class="btn sm" onclick="saveSettings();cloudLoad()">⬇ Tải từ cloud</button>
+    </div>
+  </div></div>
+
+  <div class="panel" style="margin-top:12px"><div class="ph"><h3>🗂 Sao lưu Google Drive (tự động hàng ngày)</h3></div><div style="padding:14px 16px">
+    <div class="alert g" style="margin:0 0 12px"><span class="ic">i</span><div>Mỗi ngày app tự gửi file JSON vào thư mục <b>ONC Backup</b> trên Google Drive của bạn. Cần deploy <b>ONC_AppScript.js</b> làm Web App một lần.</div></div>
+    <div class="fld full"><label>Apps Script Web App URL</label>
+      <input id="s_driveurl" placeholder="https://script.google.com/macros/s/.../exec" value="${esc(DB.settings.driveScriptUrl||'')}">
+      <div class="hint">Google Apps Script → Deploy → New deployment → Web App → Copy URL</div>
+    </div>
+    <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+      <button class="btn sm pri" onclick="saveSettings();driveBackup(false)">🗂 Backup Drive ngay</button>
+      <span style="font-size:12px;color:var(--muted)">Lần cuối: <b>${DB.settings.lastDriveBackup?new Date(DB.settings.lastDriveBackup).toLocaleString('vi-VN'):'Chưa có'}</b></span>
     </div>
   </div></div>
 
@@ -2818,6 +2853,7 @@ function saveSettings(){
   s.custDays=N($('#s_cd').value); s.suppDays=N($('#s_sd').value); s.periodStart=$('#s_ps').value; s.periodEnd=$('#s_pe').value;
   if($('#s_sburl')) s.supabaseUrl=$('#s_sburl').value.trim();
   if($('#s_sbkey')) s.supabaseKey=$('#s_sbkey').value.trim();
+  if($('#s_driveurl')) s.driveScriptUrl=$('#s_driveurl').value.trim();
   s.company=$('#s_company').value.trim(); s.address=$('#s_addr').value.trim(); s.taxCode=$('#s_tax').value.trim();
   s.phone=$('#s_phone').value.trim(); s.email=$('#s_email').value.trim(); s.website=$('#s_web').value.trim();
   s.bank=$('#s_bank').value.trim(); s.repName=$('#s_rep').value.trim(); s.repTitle=$('#s_reptitle').value.trim();
@@ -2865,25 +2901,38 @@ function exportExcel(){
 function vBackup(){
   periodChip();
   const counts=`${DB.products.length} SP · ${DB.suppliers.length} NCC · ${DB.customers.length} KH · ${DB.orders.length} đơn nhập · ${DB.lines.length} dòng hàng · ${DB.sales.length} dòng bán · ${DB.opex.length} chi phí · ${DB.cash.length} thu chi`;
-  const lastBk = DB.settings.lastBackup ? new Date(DB.settings.lastBackup).toLocaleString('vi-VN') : 'Chưa có';
+  const lastSync = DB.settings.lastBackup ? new Date(DB.settings.lastBackup).toLocaleString('vi-VN') : 'Chưa có';
+  const lastDrive = DB.settings.lastDriveBackup ? new Date(DB.settings.lastDriveBackup).toLocaleString('vi-VN') : 'Chưa có';
+  const hasDrive = !!(DB.settings.driveScriptUrl||'').trim();
   $('#view').innerHTML=`
   <div class="panel"><div class="ph"><h2>Sao lưu &amp; khôi phục</h2></div><div style="padding:18px 20px">
     <p style="color:var(--ink2);margin:0 0 6px">Dữ liệu hiện tại:</p>
     <p class="num" style="color:var(--muted);margin:0 0 18px;font-size:12.5px">${counts}</p>
-    <div style="background:var(--surface2);border-radius:10px;padding:14px 16px;margin-bottom:16px">
-      <div style="font-weight:600;margin-bottom:10px">☁ Đồng bộ đa thiết bị (Supabase Cloud)</div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Lần sync cuối: <b>${lastBk}</b> · Dữ liệu tự động đẩy lên cloud sau mỗi lần lưu (8 giây).</div>
+
+    <div style="background:var(--surface2);border-radius:10px;padding:14px 16px;margin-bottom:12px">
+      <div style="font-weight:600;margin-bottom:6px">☁ Đồng bộ đa thiết bị — Supabase</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Lần sync cuối: <b>${lastSync}</b> · Tự động sau 3 giây mỗi lần lưu · Thiết bị khác tự nhận sau ≤30 giây.</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn pri" onclick="cloudSave(false)">☁ Đẩy lên cloud ngay</button>
+        <button class="btn pri" onclick="cloudSave(false)">☁ Đẩy lên ngay</button>
         <button class="btn" onclick="cloudLoad()">⬇ Tải từ cloud</button>
       </div>
     </div>
+
+    <div style="background:var(--surface2);border-radius:10px;padding:14px 16px;margin-bottom:16px">
+      <div style="font-weight:600;margin-bottom:6px">🗂 Sao lưu Google Drive</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Lần backup cuối: <b>${lastDrive}</b> · Tự động 1 lần/ngày khi mở app.</div>
+      ${hasDrive
+        ? `<button class="btn pri" onclick="driveBackup(false)">🗂 Backup Drive ngay</button>`
+        : `<div class="alert a" style="margin:0 0 8px;padding:8px 12px"><span class="ic">i</span><div>Chưa cài URL Apps Script. Vào <b>Thiết lập</b> → mục Google Drive để cài.</div></div>
+           <button class="btn ghost sm" onclick="go('settings')">→ Vào Thiết lập</button>`}
+    </div>
+
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <button class="btn" onclick="exportJSON()">⬇ Xuất file sao lưu (.json)</button>
       <button class="btn" onclick="exportExcel()">⬇ Xuất Excel (.xlsx)</button>
       <button class="btn" onclick="exportCSV()">⬇ Xuất bán hàng (.csv)</button>
-      <button class="btn danger" onclick="resetToBlank()" style="margin-left:auto">🗑 Đưa về bảng trắng</button>
       <label class="btn" style="cursor:pointer">⬆ Nhập file sao lưu<input type="file" accept=".json" style="display:none" onchange="importJSON(this)"></label>
+      <button class="btn danger" onclick="resetToBlank()" style="margin-left:auto">🗑 Đưa về bảng trắng</button>
       <button class="btn danger" onclick="resetAll()">↺ Đặt lại về dữ liệu gốc</button>
     </div>
   </div></div>`;
@@ -2979,9 +3028,9 @@ async function lkGo(){const p2el=document.getElementById('lkPw2');const setup=p2
 function _startApp(){
   const l=document.getElementById('lock');if(l)l.style.display='none';
   renderNav();go('dashboard');
-  setTimeout(()=>cloudLoad(),1500);
+  setTimeout(()=>{ cloudLoad(); _autoDriveBackupIfNeeded(); },1500);
   if(_pollInterval) clearInterval(_pollInterval);
-  _pollInterval=setInterval(_pollCloud,30000); // tự kiểm tra dữ liệu mới mỗi 30 giây
+  _pollInterval=setInterval(_pollCloud,30000);
 }
 function lockNow(){CRYPTO_KEY=null;location.reload();}
 async function changePw(){const oldp=prompt('Mật khẩu hiện tại:');if(!oldp)return;try{await _decrypt(oldp);}catch(e){toast('Sai mật khẩu',true);return;}const n1=prompt('Mật khẩu MỚI:');if(!n1||n1.length<4){toast('Không hợp lệ',true);return;}const n2=prompt('Nhập lại:');if(n1!==n2){toast('Không khớp',true);return;}const salt=crypto.getRandomValues(new Uint8Array(16));localStorage.setItem(SALT_KEY,_b64(salt.buffer));CRYPTO_KEY=await _derive(n1,salt);await encStore();toast('Đã đổi mật khẩu');}
