@@ -1267,29 +1267,61 @@ function editSOrder(id){
       <div class="full" id="soSummary" style="margin-top:8px"></div>
     </div>`,()=>{
       const cus=$('#so_cus').value; if(!cus){bad('so_cus');return false;}
-      const lines=SODRAFT.filter(l=>l.product&&N(l.qty)>0).map(l=>({product:l.product,qty:N(l.qty),price:N(l.price),deliveredQty:N(l.deliveredQty)}));
+      const lines=SODRAFT.filter(l=>l.product&&N(l.qty)>0).map(l=>({product:l.product,invoiceName:l.invoiceName||'',qty:N(l.qty),price:N(l.price),deliveredQty:N(l.deliveredQty)}));
       const obj=withTS({id:id||nid(),code:$('#so_code').value.trim(),date:$('#so_date').value,customer:cus,deliveryDate:$('#so_due').value,status:so.status||'open',note:$('#so_note').value.trim(),lines}, id?so:null);
       if(id)Object.assign(DB.sorders.find(x=>x.id===id),obj);else (DB.sorders=DB.sorders||[]).push(obj);
       save();closeModal();refresh();toast('Đã lưu đơn hàng bán');
     },'wide');
   renderSOLines(id||0);
 }
+function _showSOSearch(i, q, soid){
+  const dd=document.getElementById('sops_'+i); if(!dd) return;
+  const query=(q||'').trim().toLowerCase();
+  if(!query){ dd.style.display='none'; return; }
+  const matches=DB.products.filter(p=>p.code.toLowerCase().includes(query)||(p.groupVI||'').toLowerCase().includes(query)).slice(0,12);
+  if(!matches.length){ dd.style.display='none'; return; }
+  dd.innerHTML=matches.map(p=>`<div onclick="_selectSOProd(${i},'${p.code.replace(/'/g,"\\'")}',${soid})"
+    style="padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--line)"
+    onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+    <b style="font-size:12px">${esc(p.code)}</b>
+    <span style="font-size:11px;color:var(--muted);margin-left:6px">${esc(p.groupVI||'')}</span>
+  </div>`).join('');
+  dd.style.display='block';
+}
+function _selectSOProd(i, code, soid){
+  SODRAFT[i].product=code;
+  const p=prodOf(code);
+  if(!SODRAFT[i].invoiceName) SODRAFT[i].invoiceName=p?(p.invoiceName||p.groupVI||''):'';
+  renderSOLines(soid);
+}
 function renderSOLines(soid){
   const box=$('#soLineEditor'); if(!box)return;
-  const opts=c=>`<option value="">— sản phẩm —</option>`+DB.products.map(p=>`<option value="${esc(p.code)}" ${p.code===c?'selected':''}>${esc(p.code)} · ${esc(p.groupVI)}</option>`).join('');
-  let h=`<div class="qline head"><div>Sản phẩm</div><div>SL đặt</div><div>Đơn giá</div><div>Đã giao / Tồn</div><div></div></div>`;
+  const ddStyle='position:absolute;top:100%;left:0;right:0;background:var(--bg);border:1px solid var(--line);border-radius:8px;z-index:200;display:none;max-height:200px;overflow-y:auto;box-shadow:0 6px 20px rgba(0,0,0,.18);margin-top:2px';
+  let h=`<div class="qline head"><div>Mã SP</div><div>Tên xuất HĐ</div><div>SL đặt</div><div>Đơn giá</div><div>Đã giao / Tồn</div><div></div></div>`;
   SODRAFT.forEach((l,i)=>{
-    const av=l.product?availability(l.product, null):null;
+    const p=prodOf(l.product);
+    const warnStyle=l.product&&!p?'border-color:var(--red);':'';
+    const defInvName=l.invoiceName||(p?(p.invoiceName||p.groupVI||''):'');
+    const av=l.product?availability(l.product,null):null;
     const info=l.product?`đã giao ${fmt(l.deliveredQty||0)} · tồn ${av?fmt(av.atp):0}`:'';
     h+=`<div class="qline">
-      <select onchange="SODRAFT[${i}].product=this.value;renderSOLines(${soid})">${opts(l.product)}</select>
+      <div style="position:relative;min-width:0">
+        <input id="sopi_${i}" value="${esc(l.product)}" placeholder="Gõ mã hoặc tên…" style="width:100%;${warnStyle}"
+          oninput="SODRAFT[${i}].product=this.value.trim();_showSOSearch(${i},this.value,${soid})"
+          onfocus="_showSOSearch(${i},this.value,${soid})"
+          onblur="setTimeout(()=>{const d=document.getElementById('sops_${i}');if(d)d.style.display='none'},180)"
+          onkeydown="if(event.key==='Escape'){const d=document.getElementById('sops_${i}');if(d)d.style.display='none'}">
+        <div id="sops_${i}" style="${ddStyle}"></div>
+        ${p?`<span style="display:block;font-size:10px;color:var(--muted);padding:1px 2px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.groupVI||'')}</span>`:''}
+      </div>
+      <input value="${esc(defInvName)}" placeholder="Tên trên hóa đơn…" oninput="SODRAFT[${i}].invoiceName=this.value" style="font-size:11px">
       <input class="num" value="${l.qty||''}" oninput="SODRAFT[${i}].qty=this.value;soSummary()" onchange="renderSOLines(${soid})">
       <input class="num" value="${l.price||''}" oninput="SODRAFT[${i}].price=this.value;soSummary()">
-      <div class="mut" style="font-size:11.5px">${info}</div>
+      <div class="mut" style="font-size:11px">${info}</div>
       <button class="del" onclick="SODRAFT.splice(${i},1);renderSOLines(${soid})">✕</button>
     </div>`;
   });
-  h+=`<button class="btn sm" onclick="SODRAFT.push({product:'',qty:1,price:0,deliveredQty:0});renderSOLines(${soid})">+ Thêm sản phẩm</button>`;
+  h+=`<button class="btn sm" onclick="SODRAFT.push({product:'',invoiceName:'',qty:1,price:0,deliveredQty:0});renderSOLines(${soid})">+ Thêm sản phẩm</button>`;
   box.innerHTML=h; soSummary();
 }
 function soSummary(){ const box=$('#soSummary'); if(!box)return; let t=0; SODRAFT.forEach(l=>t+=N(l.qty)*N(l.price)); box.innerHTML=`<div class="alert g"><span class="ic">∑</span><div>Tổng giá trị đơn: <b class="num">${fmt(t)} ₫</b></div></div>`; }
