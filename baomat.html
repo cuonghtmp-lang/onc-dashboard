@@ -702,15 +702,27 @@ function ar(){
 }
 function goodsOwed(o){
   // Tiền phải trả NCC hàng:
-  //   NCC Việt Nam: giá trị hàng + thuế NK + VAT trên HĐ mua (ONC trả cả VAT cho NCC)
-  //   NCC nước ngoài (JZ...): chỉ giá trị hàng + thuế NK (VAT NK nộp HQ riêng)
+  //   NCC Việt Nam: giá trị hàng + VAT trên HĐ mua (ONC trả cả VAT cho NCC)
+  //   NCC nước ngoài: chỉ giá trị hàng (thuế NK + VAT NK nộp Hải quan riêng)
   const sup = supOf(o.supplier)||{};
   const isDomestic = (sup.country||'').includes('Việt') || (sup.country||'').toLowerCase()==='vn';
   const calc = orderCalc(o.code);
   return calc.lines.reduce((s, l) => {
     const vat = isDomestic ? (l.vatPurchase||0) : 0;
-    return s + l.value + l.duty + vat;
+    return s + l.value + vat; // thuế NK không tính vào NCC
   }, 0);
+}
+function taxOwed(o){
+  // Thuế NK + VAT NK → nộp Hải quan/Nhà nước (chỉ áp dụng NCC nước ngoài)
+  const sup = supOf(o.supplier)||{};
+  const isDomestic = (sup.country||'').includes('Việt') || (sup.country||'').toLowerCase()==='vn';
+  if(isDomestic) return 0;
+  const calc = orderCalc(o.code);
+  return calc.totalDuty + calc.totalVAT;
+}
+function partyName(code){
+  if(code==='_HQ_') return 'Hải quan / Nhà nước';
+  return (supOf(code)||{}).name||code;
 }
 function carrierOwed(o){
   // Tính nợ cho từng ĐVVC (quốc tế / nội địa / cùng một)
@@ -1065,6 +1077,14 @@ function payableItems(){
     for(const it of items){ if(pool<=0)break; const a=Math.min(it.open,pool); it.open-=a; pool-=a; }
     items.forEach(it=>all.push(it));
   });
+  // Thuế NK + VAT NK → Hải quan/Nhà nước (tách riêng khỏi NCC)
+  DB.orders.forEach(o=>{
+    const taxAmt=taxOwed(o); if(!(taxAmt>0)) return;
+    const base=o.dateWH||o.dateETA||o.datePI||'';
+    const taxPaid=DB.cash.filter(x=>x.objCode==='_HQ_'&&x.order===o.code&&N(x.cashOut)>0).reduce((s,x)=>s+N(x.cashOut),0);
+    const open=Math.max(0,taxAmt-taxPaid);
+    all.push({party:'_HQ_',name:'Hải quan / Nhà nước',order:o.code,kind:'thuế NK',date:base,due:'',amount:taxAmt,open,ref:o.code+' · thuế NK'});
+  });
   return all;
 }
 function openPayables(){ return payableItems().filter(it=>it.open>0.5); }
@@ -1385,6 +1405,7 @@ function poParties(oc){
   const s=supOf(o.supplier); if(s)arr.push({code:s.code,name:s.name,role:'hàng'});
   if(o.carrier){ const c=supOf(o.carrier); if(c&&!arr.find(x=>x.code===c.code)) arr.push({code:c.code,name:c.name,role:'VC quốc tế'}); }
   if(o.domesticCarrier){ const d=supOf(o.domesticCarrier); if(d&&!arr.find(x=>x.code===d.code)) arr.push({code:d.code,name:d.name,role:'VC nội địa'}); }
+  if(taxOwed(o)>0) arr.push({code:'_HQ_',name:'Hải quan / Nhà nước',role:'thuế NK'});
   return arr;
 }
 function poOpen(oc,party){ return payableItems().filter(x=>x.order===oc&&x.party===party).reduce((a,x)=>a+x.open,0); }
@@ -1461,7 +1482,7 @@ function approvePayOrder(id){
     <div class="mb">
       <p style="margin:0 0 12px">Xác nhận <b>PHÊ DUYỆT</b> lệnh <b>${esc(p.code)}</b>?</p>
       <div class="alert b" style="margin-bottom:14px"><span class="ic">₫</span><div>
-        Đơn: <b>${esc(p.order)}</b> · Đối tượng: <b>${esc((supOf(p.party)||{}).name||p.party)}</b><br>
+        Đơn: <b>${esc(p.order)}</b> · Đối tượng: <b>${esc(partyName(p.party))}</b><br>
         Số tiền: <b class="num">${fmt(p.amount)} ₫</b> · Ngày TT: <b>${dshow(p.dueDate)||'—'}</b><br>
         Nội dung: ${esc(p.note||'—')}
       </div></div>
@@ -1482,7 +1503,7 @@ function rejectPayOrder(id){
   $('#modal2').className='modal';
   $('#modal2').innerHTML=`<div class="mh"><h3>Từ chối lệnh thanh toán</h3><div class="spacer"></div><button class="x" onclick="closeModal2()">✕</button></div>
     <div class="mb">
-      <p style="margin:0 0 12px">Từ chối lệnh <b>${esc(p.code)}</b> — <b>${fmt(p.amount)} ₫</b> cho <b>${esc((supOf(p.party)||{}).name||p.party)}</b>?</p>
+      <p style="margin:0 0 12px">Từ chối lệnh <b>${esc(p.code)}</b> — <b>${fmt(p.amount)} ₫</b> cho <b>${esc(partyName(p.party))}</b>?</p>
       <div class="fld"><label>Lý do từ chối <span class="req">*</span></label><input id="rj_reason" placeholder="Nhập lý do từ chối…"></div>
     </div>
     <div class="mf"><button class="btn ghost" onclick="closeModal2()">Hủy</button>
@@ -1505,7 +1526,7 @@ function markPaid(id){
   $('#modal2').innerHTML=`<div class="mh"><h3>Xác nhận đã chuyển tiền</h3><div class="spacer"></div><button class="x" onclick="closeModal2()">✕</button></div>
     <div class="mb">
       <div class="alert g" style="margin-bottom:14px"><span class="ic">₫</span><div>
-        Đơn: <b>${esc(p.order)}</b> · Đối tượng: <b>${esc((supOf(p.party)||{}).name||p.party)}</b><br>
+        Đơn: <b>${esc(p.order)}</b> · Đối tượng: <b>${esc(partyName(p.party))}</b><br>
         Số tiền: <b class="num">${fmt(p.amount)} ₫</b>
         ${p.approvedBy?`<br>Người duyệt: <b>${esc(p.approvedBy)}</b>`:''}
       </div></div>
@@ -1524,7 +1545,8 @@ function doMarkPaid(id){
   const d=$('#mk_date')?$('#mk_date').value:todayISO();
   const ref=$('#mk_ref')?$('#mk_ref').value.trim():'';
   const note=$('#mk_note')?$('#mk_note').value.trim():'Thanh toán đơn '+p.order+' ('+p.code+')';
-  DB.cash.push({id:nid(),date:d,txnType:'Chuyển khoản',objType:'Thương mại',objCode:p.party,bankRef:ref,content:note,cashIn:0,cashOut:N(p.amount),ref:p.code,order:p.order});
+  const objType=p.party==='_HQ_'?'Thuế':'Thương mại';
+  DB.cash.push({id:nid(),date:d,txnType:'Chuyển khoản',objType,objCode:p.party,bankRef:ref,content:note,cashIn:0,cashOut:N(p.amount),ref:p.code,order:p.order});
   p.status='paid'; p.paidDate=d; p.bankRef=ref;
   save(); closeModal2(); if($('#orderPayInfo'))fillPayInfo(p.order); else refresh();
   toast('Hoàn thành thanh toán đơn '+p.order);
@@ -1555,7 +1577,6 @@ function vPayOrders(){
     <th class="c">Trạng thái</th><th>Hành động</th></tr></thead><tbody>`;
   if(!sorted.length) html+=emptyRow(7,'₫','Chưa có lệnh thanh toán. Tạo từ đây hoặc bấm "+ Tạo lệnh thanh toán" trong đơn nhập.');
   sorted.forEach(p=>{
-    const sup=supOf(p.party);
     const actions=[];
     if(p.status==='draft'){
       actions.push(`<button class="btn sm" style="background:var(--green);color:#fff;border-color:var(--green)" onclick="approvePayOrder(${p.id})">✓ Duyệt</button>`);
@@ -1573,7 +1594,7 @@ function vPayOrders(){
     html+=`<tr>
       <td class="code">${esc(p.code)}</td>
       <td class="code">${esc(p.order)}</td>
-      <td><b>${esc(sup?sup.name:p.party)}</b>${p.note?`<div class="mut" style="font-size:11px">${esc(p.note.slice(0,45))}${p.note.length>45?'…':''}</div>`:''}
+      <td><b>${esc(partyName(p.party))}</b>${p.note?`<div class="mut" style="font-size:11px">${esc(p.note.slice(0,45))}${p.note.length>45?'…':''}</div>`:''}
         ${p.approvedBy&&p.status!=='draft'?`<div class="mut" style="font-size:11px">Duyệt: ${esc(p.approvedBy)}</div>`:''}</td>
       <td class="r num">${fmt(p.amount)}</td>
       <td class="num">${dshow(p.dueDate)||'<span class="mut">—</span>'}</td>
@@ -2362,8 +2383,8 @@ function fillPayInfo(code, expandKind){
 
   const stColor=ps.status==='paid'?'g':ps.status==='partial'?'a':'r';
   const stLabel=ps.status==='paid'?'✓ Đã thanh toán đủ':ps.status==='partial'?'Trả một phần':ps.status==='none'?'—':'Chưa thanh toán';
-  const kindIcon=k=>k==='hàng'?'💰':k.includes('quốc tế')?'🌐':k.includes('nội địa')?'🚛':'🚚';
-  const kindLabel=k=>k==='hàng'?'Tiền hàng':k.includes('quốc tế')?'VC quốc tế':k.includes('nội địa')?'VC nội địa':'Vận chuyển';
+  const kindIcon=k=>k==='hàng'?'💰':k==='thuế NK'?'🏛':k.includes('quốc tế')?'🌐':k.includes('nội địa')?'🚛':'🚚';
+  const kindLabel=k=>k==='hàng'?'Tiền hàng':k==='thuế NK'?'Thuế NK (Hải quan)':k.includes('quốc tế')?'VC quốc tế':k.includes('nội địa')?'VC nội địa':'Vận chuyển';
 
   let html=`<div class="po-panel">
     <div class="po-hd">
@@ -2385,7 +2406,7 @@ function fillPayInfo(code, expandKind){
     const pct=it.amount>0?Math.min(100,Math.round((allocated+pending)/it.amount*100)):100;
     const cashPct=it.amount>0?Math.round(allocated/it.amount*100):100;
     const isExpanded = expandKind===it.kind;
-    const supName=esc((supOf(it.party)||{}).name||it.party);
+    const supName=esc(partyName(it.party));
     // Trạng thái hiển thị khoản
     const khoanClass=!open?'done':(!needNew?'pending':'open');
 
@@ -2436,7 +2457,6 @@ function fillPayInfo(code, expandKind){
     html+=`<div class="po-ltt-hd">Lệnh thanh toán của đơn (${lttList.length})</div>
     <table class="po-tbl"><thead><tr><th>Mã lệnh</th><th>Khoản</th><th>Đối tượng</th><th class="r">Số tiền</th><th>Ngày TT</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>`;
     lttList.forEach(p=>{
-      const sup=supOf(p.party);
       const actions=[];
       if(p.status==='draft'){
         actions.push(`<button class="btn sm" style="background:var(--green);color:#fff;border-color:var(--green);padding:3px 8px;font-size:11px" onclick="approvePayOrder(${p.id})">✓ Duyệt</button>`);
@@ -2451,7 +2471,7 @@ function fillPayInfo(code, expandKind){
       html+=`<tr>
         <td class="code" style="font-size:11px">${esc(p.code)}</td>
         <td style="font-size:11px">${pKind}</td>
-        <td style="font-size:11px">${esc(sup?sup.name:p.party)}</td>
+        <td style="font-size:11px">${esc(partyName(p.party))}</td>
         <td class="r num" style="font-size:11px">${fmt(p.amount)}</td>
         <td class="num" style="font-size:11px">${dshow(p.dueDate)||'—'}</td>
         <td>${poStatusTag(p)}</td>
