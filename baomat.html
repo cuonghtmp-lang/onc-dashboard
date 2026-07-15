@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="vi">
 <head>
 <meta charset="UTF-8">
@@ -204,9 +204,9 @@ a{color:var(--blue);text-decoration:none}
 .linerow .del{border:none;background:var(--redSoft);color:var(--red);width:30px;height:32px;border-radius:7px}
 @media (max-width:720px){ .linerow{grid-template-columns:1fr 1fr 1fr;gap:6px} .linerow>select{grid-column:1/-1} .linerow.head{display:none} }
 .miniline{font-size:11.5px;color:var(--muted);text-align:right;padding-right:42px;margin:-3px 0 8px}
-.qline{display:grid;grid-template-columns:1.7fr .6fr .8fr 1.5fr 34px;gap:8px;align-items:center;margin-bottom:7px}
-.qline.head{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:3px}
-.qline input,.qline select{padding:7px 9px;border:1px solid var(--line);border-radius:7px;width:100%}
+.qline{display:grid;grid-template-columns:1.1fr 1.5fr .48fr .78fr 1.25fr 34px;gap:6px;align-items:start;margin-bottom:7px}
+.qline.head{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:3px;align-items:end}
+.qline input,.qline select{padding:7px 9px;border:1px solid var(--line);border-radius:7px;width:100%;box-sizing:border-box}
 .qline .del{border:none;background:var(--redSoft);color:var(--red);width:30px;height:32px;border-radius:7px}
 @media (max-width:620px){.qline{grid-template-columns:1fr 1fr;gap:6px}.qline>div{grid-column:1/-1}}
 /* print */
@@ -821,21 +821,28 @@ function vQuotes(){
   html+=`</tbody></table></div></div><div class="alert g" style="margin:0"><span class="ic">i</span><div>“Tình trạng hàng” dựa trên <b>tồn có thể bán</b> = tồn thực có − đã cam kết ở báo giá đang mở + hàng đang về. Báo giá ở trạng thái Nháp/Đã gửi sẽ giữ chỗ tồn.</div></div>`;
   $('#view').innerHTML=html;
 }
-function nextQuoteCode(){
-  const pre='BG-'+todayISO().replace(/-/g,'').slice(2)+'-'; let n=1, code;
+function nextQuoteCode(cus){
+  const d=todayISO().split('-');
+  const ddmmyyyy=d[2]+d[1]+d[0];
+  const pre='GB-'+ddmmyyyy+'-'+(cus||'')+'-';
+  let n=1, code;
   do{ code=pre+String(n).padStart(2,'0'); n++; }while((DB.quotes||[]).some(q=>q.code===code));
   return code;
 }
+function qAutoCode(cus, isEdit){
+  if(isEdit) return;
+  const el=$('#q_code'); if(el) el.value=nextQuoteCode(cus);
+}
 function editQuote(id){
-  const def=nextQuoteCode();
-  const q=id?DB.quotes.find(x=>x.id===id):{code:def,date:todayISO(),customer:'',validUntil:addDays(todayISO(),15),status:'draft',subject:'',attn:'',note:'',lines:[]};
+  const q=id?DB.quotes.find(x=>x.id===id):{code:'',date:todayISO(),customer:'',validUntil:addDays(todayISO(),15),status:'draft',subject:'',attn:'',note:'',lines:[]};
+  if(!id&&!q.code) q.code=nextQuoteCode('');
   QDRAFT=(q.lines||[]).map(l=>({...l}));
   const cOpts=DB.customers.map(c=>`<option value="${esc(c.code)}" ${c.code===q.customer?'selected':''}>${esc(c.code)} — ${esc(c.name)}</option>`).join('');
   const stOpts=[['draft','Nháp'],['sent','Đã gửi'],['won','Chốt'],['lost','Hủy']].map(([v,t])=>`<option value="${v}" ${q.status===v?'selected':''}>${t}</option>`).join('');
   openModal(id?'Báo giá '+esc(q.code):'Tạo báo giá',`
     <div class="grid">
-      <div class="fld"><label>Mã báo giá</label><input id="q_code" value="${esc(q.code)}"></div>
-      <div class="fld"><label>Khách hàng <span class="req">*</span></label><select id="q_cus"><option value="">— chọn —</option>${cOpts}</select><div class="err">Chọn khách hàng.</div></div>
+      <div class="fld"><label>Khách hàng <span class="req">*</span></label><select id="q_cus" onchange="qAutoCode(this.value,${!!id})"><option value="">— chọn —</option>${cOpts}</select><div class="err">Chọn khách hàng.</div></div>
+      <div class="fld"><label>Mã báo giá</label><input id="q_code" value="${esc(q.code)}" placeholder="Tự điền khi chọn khách hàng"></div>
       <div class="fld"><label>Ngày báo giá</label><input type="date" id="q_date" value="${q.date}"></div>
       <div class="fld"><label>Hiệu lực đến</label><input type="date" id="q_valid" value="${q.validUntil||''}"></div>
       <div class="fld"><label>Người nhận (Attn)</label><input id="q_attn" value="${esc(q.attn||'')}"></div>
@@ -847,31 +854,65 @@ function editQuote(id){
       <div class="full" id="qSummary" style="margin-top:8px"></div>
     </div>`,()=>{
       const cus=$('#q_cus').value; if(!cus){bad('q_cus');return false;}
-      const lines=QDRAFT.filter(l=>l.product&&N(l.qty)>0).map(l=>({product:l.product,qty:N(l.qty),price:N(l.price)}));
-      const obj={id:id||nid(),code:$('#q_code').value.trim()||def,date:$('#q_date').value,customer:cus,validUntil:$('#q_valid').value,status:$('#q_status').value,subject:$('#q_subject').value.trim(),attn:$('#q_attn').value.trim(),note:$('#q_note').value.trim(),lines};
+      const lines=QDRAFT.filter(l=>l.product&&N(l.qty)>0).map(l=>({product:l.product,invoiceName:l.invoiceName||'',qty:N(l.qty),price:N(l.price)}));
+      const autoCode=nextQuoteCode(cus);
+      const obj={id:id||nid(),code:$('#q_code').value.trim()||autoCode,date:$('#q_date').value,customer:cus,validUntil:$('#q_valid').value,status:$('#q_status').value,subject:$('#q_subject').value.trim(),attn:$('#q_attn').value.trim(),note:$('#q_note').value.trim(),lines};
       if(id)Object.assign(DB.quotes.find(x=>x.id===id),obj);else DB.quotes.push(obj);
       save();closeModal();refresh();toast('Đã lưu báo giá '+obj.code);
     },'wide');
   renderQLines(id||0);
   if(id){ const mf=document.querySelector('#modal .mf'); if(mf){ const b=document.createElement('button'); b.className='btn'; b.innerHTML='→ Chuyển thành đơn bán'; b.onclick=()=>convertQuote(id); mf.insertBefore(b,mf.firstChild); const p=document.createElement('button'); p.className='btn'; p.textContent='In'; p.onclick=()=>printQuote(id); mf.insertBefore(p,mf.firstChild);} }
 }
+function _showQSearch(i, q, qid){
+  const dd=document.getElementById('qps_'+i); if(!dd) return;
+  const query=(q||'').trim().toLowerCase();
+  if(!query){ dd.style.display='none'; return; }
+  const matches=DB.products.filter(p=>p.code.toLowerCase().includes(query)||(p.groupVI||'').toLowerCase().includes(query)).slice(0,12);
+  if(!matches.length){ dd.style.display='none'; return; }
+  dd.innerHTML=matches.map(p=>`<div onclick="_selectQProd(${i},'${p.code.replace(/'/g,"\\'")}',${qid})"
+    style="padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--line)"
+    onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+    <b style="font-size:12px">${esc(p.code)}</b>
+    <span style="font-size:11px;color:var(--muted);margin-left:6px">${esc(p.groupVI||'')}</span>
+  </div>`).join('');
+  dd.style.display='block';
+}
+function _selectQProd(i, code, qid){
+  QDRAFT[i].product=code;
+  if(!N(QDRAFT[i].price)) QDRAFT[i].price=suggestedPriceQ(code);
+  const p=prodOf(code);
+  if(!QDRAFT[i].invoiceName) QDRAFT[i].invoiceName=p?(p.invoiceName||p.groupVI||''):'';
+  renderQLines(qid);
+}
 function renderQLines(qid){
   const box=$('#qLineEditor'); if(!box)return;
-  const opts=c=>`<option value="">— sản phẩm —</option>`+DB.products.map(p=>`<option value="${esc(p.code)}" ${p.code===c?'selected':''}>${esc(p.code)} · ${esc(p.groupVI)}</option>`).join('');
-  let h=`<div class="qline head"><div>Sản phẩm</div><div>SL</div><div>Đơn giá</div><div>Tình trạng hàng</div><div></div></div>`;
+  const ddStyle='position:absolute;top:100%;left:0;right:0;background:var(--bg);border:1px solid var(--line);border-radius:8px;z-index:200;display:none;max-height:200px;overflow-y:auto;box-shadow:0 6px 20px rgba(0,0,0,.18);margin-top:2px';
+  let h=`<div class="qline head"><div>Mã SP</div><div>Tên xuất HĐ</div><div>SL</div><div>Đơn giá</div><div>Tình trạng hàng</div><div></div></div>`;
   QDRAFT.forEach((l,i)=>{
-    let badge='<span class="mut">— chọn SP —</span>';
+    const p=prodOf(l.product);
+    const warnStyle=l.product&&!p?'border-color:var(--red);':'';
+    const defInvName=l.invoiceName||(p?(p.invoiceName||p.groupVI||''):'');
+    let badge='<span style="font-size:11px;color:var(--muted)">— chọn mã SP —</span>';
     if(l.product){ const st=lineStatus(l.product,l.qty,qid); const sugg=suggestedPriceQ(l.product);
-      badge=st.html + (sugg&&!N(l.price)?` <span class="mut" style="font-size:11px">gợi ý ${fmt(sugg)}</span>`:'') + (!sugg&&!N(l.price)?` <span class="mut" style="font-size:11px">chưa có giá vốn</span>`:''); }
+      badge=st.html+(sugg&&!N(l.price)?` <span class="mut" style="font-size:11px">gợi ý ${fmt(sugg)}</span>`:'')+((!sugg)&&!N(l.price)?` <span class="mut" style="font-size:11px">chưa có giá vốn</span>`:''); }
     h+=`<div class="qline">
-      <select onchange="QDRAFT[${i}].product=this.value;if(!N(QDRAFT[${i}].price))QDRAFT[${i}].price=suggestedPriceQ(this.value);renderQLines(${qid})">${opts(l.product)}</select>
+      <div style="position:relative;min-width:0">
+        <input id="qpi_${i}" value="${esc(l.product)}" placeholder="Gõ mã hoặc tên…" style="width:100%;${warnStyle}"
+          oninput="QDRAFT[${i}].product=this.value.trim();_showQSearch(${i},this.value,${qid})"
+          onfocus="_showQSearch(${i},this.value,${qid})"
+          onblur="setTimeout(()=>{const d=document.getElementById('qps_${i}');if(d)d.style.display='none'},180)"
+          onkeydown="if(event.key==='Escape'){const d=document.getElementById('qps_${i}');if(d)d.style.display='none'}">
+        <div id="qps_${i}" style="${ddStyle}"></div>
+        ${p?`<span style="display:block;font-size:10px;color:var(--muted);padding:1px 2px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.groupVI||'')}</span>`:''}
+      </div>
+      <input value="${esc(defInvName)}" placeholder="Tên trên hóa đơn…" oninput="QDRAFT[${i}].invoiceName=this.value" style="font-size:11px">
       <input class="num" value="${l.qty||''}" oninput="QDRAFT[${i}].qty=this.value;qSummary()" onchange="renderQLines(${qid})">
       <input class="num" value="${l.price||''}" oninput="QDRAFT[${i}].price=this.value;qSummary()">
-      <div>${badge}</div>
+      <div style="font-size:11px">${badge}</div>
       <button class="del" onclick="QDRAFT.splice(${i},1);renderQLines(${qid})">✕</button>
     </div>`;
   });
-  h+=`<button class="btn sm" onclick="QDRAFT.push({product:'',qty:1,price:0});renderQLines(${qid})">+ Thêm sản phẩm</button>`;
+  h+=`<button class="btn sm" onclick="QDRAFT.push({product:'',invoiceName:'',qty:1,price:0});renderQLines(${qid})">+ Thêm sản phẩm</button>`;
   box.innerHTML=h; qSummary();
 }
 function qSummary(){
@@ -883,7 +924,7 @@ function qSummary(){
 function convertQuote(id){
   const q=DB.quotes.find(x=>x.id===id); if(!q||!(q.lines||[]).length){toast('Báo giá chưa có dòng nào',true);return;}
   confirmModal('Chuyển thành đơn hàng bán','Tạo đơn hàng bán (chờ giao) từ báo giá này? Báo giá sẽ chuyển trạng thái “Chốt”. Khi giao hàng sẽ ghi nhận doanh thu.',()=>{
-    const code='SO-'+(q.code||'').replace(/^BG-/,'');
+    const code='SO-'+(q.code||'').replace(/^GB-/,'').replace(/^BG-/,'');
     const so=withTS({id:nid(),code:code||('SO-'+todayISO().replace(/-/g,'').slice(2)),date:todayISO(),customer:q.customer,status:'open',note:'Từ báo giá '+q.code,lines:q.lines.map(l=>({product:l.product,qty:N(l.qty),price:N(l.price),deliveredQty:0}))},null);
     (DB.sorders=DB.sorders||[]).push(so); q.status='won'; save(); closeModal(); go('sorders'); toast('Đã tạo đơn hàng bán '+so.code);
   });
@@ -892,7 +933,8 @@ function printQuote(id){
   const q=DB.quotes.find(x=>x.id===id); if(!q)return; const c=custOf(q.customer)||{}; const s=DB.settings;
   let rows='',total=0;
   (q.lines||[]).forEach((l,i)=>{ const p=prodOf(l.product); const amt=N(l.qty)*N(l.price); total+=amt;
-    rows+=`<tr><td class="ce">${i+1}</td><td class="cd">${esc(l.product)}</td><td>${esc(p?p.groupVI:'')}<div class="en">${esc(p?p.groupEN:'')}</div></td><td class="ce">${esc(p?p.unit:'')}</td><td class="rr">${fmt(l.qty)}</td><td class="rr">${fmt(l.price)}</td><td class="rr">${fmt(amt)}</td></tr>`; });
+    const dispName=l.invoiceName||(p?p.groupVI:'');
+    rows+=`<tr><td class="ce">${i+1}</td><td class="cd">${esc(l.product)}</td><td>${esc(dispName)}<div class="en">${esc(p?p.groupEN:'')}</div></td><td class="ce">${esc(p?p.unit:'')}</td><td class="rr">${fmt(l.qty)}</td><td class="rr">${fmt(l.price)}</td><td class="rr">${fmt(amt)}</td></tr>`; });
   if(!(q.lines||[]).length) rows=`<tr><td colspan="7" class="ce" style="color:#888">(chưa có sản phẩm)</td></tr>`;
   const vat=total*N(s.vatSale); const grand=total+vat;
   const contact=[s.phone?'ĐT: '+esc(s.phone):'',s.email?'Email: '+esc(s.email):'',s.website?esc(s.website):''].filter(Boolean).join(' · ');
