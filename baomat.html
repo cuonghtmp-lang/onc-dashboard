@@ -1556,6 +1556,29 @@ function doReject(id){
   save(); closeModal2(); if($('#orderPayInfo'))fillPayInfo(p.order); else refresh();
   toast('Đã từ chối lệnh '+p.code);
 }
+function deletePayOrder(id){
+  const p=DB.porders.find(x=>x.id===id); if(!p)return;
+  if(p.status==='paid'){toast('Không thể xóa lệnh đã thanh toán',true);return;}
+  const orderCode=p.order;
+  $('#modal2').className='modal';
+  $('#modal2').innerHTML=`<div class="mh"><h3>Xóa lệnh thanh toán</h3><div class="spacer"></div><button class="x" onclick="closeModal2()">✕</button></div>
+    <div class="mb">
+      <p style="margin:0 0 12px">Xác nhận <b>XÓA</b> lệnh <b>${esc(p.code)}</b>?</p>
+      <div class="alert r" style="margin-bottom:14px"><span class="ic">🗑</span><div>
+        Đơn: <b>${esc(p.order)}</b> · Đối tượng: <b>${esc(partyName(p.party))}</b><br>
+        Số tiền: <b class="num">${fmt(p.amount)} ₫</b> · Trạng thái: <b>${p.status}</b><br>
+        Hành động này không thể hoàn tác.
+      </div></div>
+    </div>
+    <div class="mf"><button class="btn ghost" onclick="closeModal2()">Hủy</button>
+      <button class="btn danger" onclick="doDeletePayOrder(${id},${JSON.stringify(orderCode)})">🗑 Xác nhận xóa</button></div>`;
+  $('#scrim2').classList.add('on');
+}
+function doDeletePayOrder(id, orderCode){
+  DB.porders=DB.porders.filter(x=>x.id!==id);
+  save(); closeModal2(); if($('#orderPayInfo'))fillPayInfo(orderCode); else refresh();
+  toast('Đã xóa lệnh thanh toán');
+}
 function markPaid(id){
   const p=DB.porders.find(x=>x.id===id); if(!p)return;
   if(p.status==='paid'){toast('Lệnh này đã hoàn thành rồi',true);return;}
@@ -2502,7 +2525,8 @@ function fillPayInfo(code, expandKind){
       } else if(p.status==='approved'){
         actions.push(`<button class="btn sm pri" style="padding:3px 8px;font-size:11px" onclick="markPaid(${p.id})">₫ Chi tiền</button>`);
       }
-      actions.push(`<button class="btn sm ghost" style="padding:3px 8px;font-size:11px" onclick="editPayOrder(${p.id})">Xem</button>`);
+      actions.push(`<button class="btn sm ghost" style="padding:3px 8px;font-size:11px" onclick="editPayOrder(${p.id})">✏ Sửa</button>`);
+      if(p.status!=='paid') actions.push(`<button class="btn sm danger" style="padding:3px 8px;font-size:11px" onclick="deletePayOrder(${p.id})">🗑</button>`);
       // tìm kind của lệnh này từ payableItems
       const pItem=payableItems().find(x=>x.order===p.order&&x.party===p.party);
       const pKind=pItem?kindIcon(pItem.kind)+' '+kindLabel(pItem.kind):'';
