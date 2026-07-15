@@ -2481,7 +2481,7 @@ function fillPayInfo(code, expandKind){
         <span class="num" style="font-size:11px;min-width:28px">${pct}%</span>
         <div class="spacer"></div>
         <span class="num" style="font-size:11px">${fmt(allocated)}/${fmt(it.amount)} ₫</span>
-        ${open&&needNew&&!isExpanded?`<button class="btn sm pri" style="margin-left:8px" onclick="quickPayOrder(${JSON.stringify(code)},${JSON.stringify(it.kind)},${JSON.stringify(it.party)},${JSON.stringify(it.hqKind||'')})">⚡ Tạo ngay</button><button class="btn sm ghost" style="margin-left:4px" onclick="fillPayInfo(${JSON.stringify(code)},${JSON.stringify(it.kind)})">✏ Tùy chỉnh</button>`:''}
+        ${open&&needNew&&!isExpanded?`<button class="btn sm pri" style="margin-left:8px" onclick="quickPayOrder(${esc(JSON.stringify(code))},${esc(JSON.stringify(it.kind))},${esc(JSON.stringify(it.party))},${esc(JSON.stringify(it.hqKind||''))})">⚡ Tạo ngay</button><button class="btn sm ghost" style="margin-left:4px" onclick="fillPayInfo(${esc(JSON.stringify(code))},${esc(JSON.stringify(it.kind))})">✏ Tùy chỉnh</button>`:''}
         ${!open?'<span class="tag g" style="font-size:11px;margin-left:8px">✓ Xong</span>':(!needNew?'<span class="tag a" style="font-size:11px;margin-left:8px">⏳ Đang xử lý</span>':'')}
       </div>
       ${pending>0?`<div style="padding:2px 0 4px;font-size:11px;color:var(--amber)">⏳ Lệnh đang chờ xử lý: <b>${fmt(pending)} ₫</b>${effectiveOpen>0.5?` · Chưa lập lệnh: <b>${fmt(effectiveOpen)} ₫</b>`:' · Đã phủ toàn bộ'}</div>`:''}`;
@@ -2501,8 +2501,8 @@ function fillPayInfo(code, expandKind){
           <div class="po-form-fld wide"><label>Nội dung / Ghi chú</label><input id="pof_note" value="${esc(defNote)}"></div>
         </div>
         <div class="po-form-acts">
-          <button class="btn ghost" onclick="fillPayInfo(${JSON.stringify(code)})">Hủy</button>
-          <button class="btn pri" onclick="saveInlinePayOrder(${JSON.stringify(code)},${JSON.stringify(it.kind)},${JSON.stringify(it.party)},${JSON.stringify(it.hqKind||'')})">💾 Lưu lệnh thanh toán</button>
+          <button class="btn ghost" onclick="fillPayInfo(${esc(JSON.stringify(code))})">Hủy</button>
+          <button class="btn pri" onclick="saveInlinePayOrder(${esc(JSON.stringify(code))},${esc(JSON.stringify(it.kind))},${esc(JSON.stringify(it.party))},${esc(JSON.stringify(it.hqKind||''))})">💾 Lưu lệnh thanh toán</button>
         </div>
       </div>`;
     }
