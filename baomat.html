@@ -197,7 +197,8 @@ a{color:var(--blue);text-decoration:none}
 @media (max-width:560px){ .cgrow{grid-template-columns:1fr 1fr} .cgrow .cglbl{grid-column:1/-1;font-weight:600} .cgrow.head{display:none} }
 @media (max-width:560px){.docitem{grid-template-columns:1fr;gap:5px}.dopt{justify-content:center}}
 
-.linerow{display:grid;grid-template-columns:1.2fr .4fr .65fr .65fr .8fr .65fr .7fr .7fr .45fr .95fr 30px;gap:5px;align-items:center;margin-bottom:7px}
+.linerow{display:grid;grid-template-columns:46px 1.8fr .42fr .6fr .6fr .78fr .58fr .65fr .65fr .42fr .95fr 30px;gap:5px;align-items:start;margin-bottom:7px}
+.linerow.head{align-items:end}
 .linerow.head{font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);margin-bottom:3px}
 .linerow input,.linerow select{padding:7px 8px;border:1px solid var(--line);border-radius:7px;width:100%;box-sizing:border-box}
 .linerow .del{border:none;background:var(--redSoft);color:var(--red);width:30px;height:32px;border-radius:7px}
@@ -2437,7 +2438,7 @@ function renderLineEditor(){
   const fxdef=N(DB.settings.exchangeRate);
   const lock='background:var(--surface2);color:var(--muted);pointer-events:none;';
   const ddStyle='position:absolute;top:100%;left:0;right:0;background:var(--bg);border:1px solid var(--line);border-radius:8px;z-index:200;display:none;max-height:220px;overflow-y:auto;box-shadow:0 6px 20px rgba(0,0,0,.18);margin-top:2px';
-  let h=`<div class="linerow head"><div>Mã SP</div><div>SL</div><div>Giá USD</div><div>Tỷ giá mua</div><div>Giá VND</div><div>Tỷ giá thuế</div><div>Thuế NK (₫)</div><div>VAT NK (₫)</div><div>VAT NK %</div><div>Tên xuất HĐ</div><div></div></div>`;
+  let h=`<div class="linerow head"><div></div><div>Mã SP</div><div>SL</div><div>Giá USD</div><div>Tỷ giá mua</div><div>Giá VND</div><div>Tỷ giá thuế</div><div>Thuế NK (₫)</div><div>VAT NK (₫)</div><div>VAT NK %</div><div>Tên xuất HĐ</div><div></div></div>`;
   DRAFT_LINES.forEach((l,i)=>{
     const nd=!!l.domestic;
     const fx=N(l.fx)>0?N(l.fx):fxdef;
@@ -2447,22 +2448,18 @@ function renderLineEditor(){
     const nameHint=p?(p.groupVI||''):'';
     const warnStyle=l.product&&!p?'border-color:var(--red);':'';
     const dis=nd?`disabled style="${lock}"`:'' ;
-    h+=`<div class="linerow" style="${nd?'background:color-mix(in slab,var(--surface2) 30%,transparent);border-radius:8px;padding:2px 4px':''}">
-      <div style="display:flex;flex-direction:column;gap:2px">
-        <div style="display:flex;gap:4px;align-items:center">
-          <button onclick="DRAFT_LINES[${i}].domestic=!DRAFT_LINES[${i}].domestic;if(DRAFT_LINES[${i}].domestic){DRAFT_LINES[${i}].priceFC=0;DRAFT_LINES[${i}].dutyAmt=0;DRAFT_LINES[${i}].importVATAmt=0;}renderLineEditor()"
-            style="flex-shrink:0;font-size:10px;padding:2px 5px;border-radius:5px;border:1px solid var(--line);background:${nd?'var(--amber)':'var(--blue,#1a73e8)'};color:#fff;cursor:pointer;white-space:nowrap"
-            title="${nd?'Đang: Nội địa VND':'Đang: Nhập khẩu USD'}">${nd?'🏭 VND':'🌐 NK'}</button>
-          <div style="position:relative;flex:1;min-width:0">
-            <input id="pi_${i}" value="${esc(l.product)}" placeholder="Gõ mã hoặc tên SP…" style="width:100%;${warnStyle}"
-              oninput="DRAFT_LINES[${i}].product=this.value.trim();_showProdSearch(${i},this.value)"
-              onfocus="_showProdSearch(${i},this.value)"
-              onblur="setTimeout(()=>{const d=document.getElementById('ps_${i}');if(d)d.style.display='none'},180)"
-              onkeydown="if(event.key==='Escape'){const d=document.getElementById('ps_${i}');if(d)d.style.display='none'}">
-            <div id="ps_${i}" style="${ddStyle}"></div>
-          </div>
-        </div>
-        <span id="ph_${i}" style="font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:2px" title="${esc(nameHint)}">${esc(nameHint)}</span>
+    h+=`<div class="linerow" style="${nd?'background:color-mix(in srgb,var(--surface2) 40%,transparent);border-radius:8px;':''}">
+      <button onclick="DRAFT_LINES[${i}].domestic=!DRAFT_LINES[${i}].domestic;if(DRAFT_LINES[${i}].domestic){DRAFT_LINES[${i}].priceFC=0;DRAFT_LINES[${i}].dutyAmt=0;DRAFT_LINES[${i}].importVATAmt=0;}renderLineEditor()"
+        style="font-size:10px;padding:3px 4px;border-radius:5px;border:1px solid var(--line);background:${nd?'var(--amber)':'var(--blue,#1a73e8)'};color:#fff;cursor:pointer;white-space:nowrap;width:100%;text-align:center"
+        title="${nd?'Đang: Nội địa VND — bấm để chuyển':'Đang: Nhập khẩu USD — bấm để chuyển'}">${nd?'🏭 VND':'🌐 NK'}</button>
+      <div style="position:relative;min-width:0">
+        <input id="pi_${i}" value="${esc(l.product)}" placeholder="Gõ mã hoặc tên SP…" style="width:100%;${warnStyle}"
+          oninput="DRAFT_LINES[${i}].product=this.value.trim();_showProdSearch(${i},this.value)"
+          onfocus="_showProdSearch(${i},this.value)"
+          onblur="setTimeout(()=>{const d=document.getElementById('ps_${i}');if(d)d.style.display='none'},180)"
+          onkeydown="if(event.key==='Escape'){const d=document.getElementById('ps_${i}');if(d)d.style.display='none'}">
+        <div id="ps_${i}" style="${ddStyle}"></div>
+        <span id="ph_${i}" style="display:block;font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:1px 2px 0" title="${esc(nameHint)}">${esc(nameHint)}</span>
       </div>
       <input class="num" placeholder="SL" value="${l.qty||''}" oninput="DRAFT_LINES[${i}].qty=this.value;lineSummary()">
       <input class="num" placeholder="USD" value="${nd?'':( l.priceFC||'')}" ${dis} oninput="DRAFT_LINES[${i}].priceFC=this.value;lineVnd(${i});lineSummary()">
