@@ -713,7 +713,7 @@ function goodsOwed(o){
   }, 0);
 }
 function taxOwed(o){
-  // Thuế NK + VAT NK → nộp Hải quan/Nhà nước (chỉ áp dụng NCC nước ngoài)
+  // Tổng thuế + VAT NK phải nộp HQ (dùng cho poParties)
   const sup = supOf(o.supplier)||{};
   const isDomestic = (sup.country||'').includes('Việt') || (sup.country||'').toLowerCase()==='vn';
   if(isDomestic) return 0;
@@ -1077,13 +1077,20 @@ function payableItems(){
     for(const it of items){ if(pool<=0)break; const a=Math.min(it.open,pool); it.open-=a; pool-=a; }
     items.forEach(it=>all.push(it));
   });
-  // Thuế NK + VAT NK → Hải quan/Nhà nước (tách riêng khỏi NCC)
+  // Thuế NK + VAT NK → Hải quan/Nhà nước (tách thành 2 khoản riêng)
   DB.orders.forEach(o=>{
-    const taxAmt=taxOwed(o); if(!(taxAmt>0)) return;
+    if(!(taxOwed(o)>0)) return;
+    const calc=orderCalc(o.code);
     const base=o.dateWH||o.dateETA||o.datePI||'';
-    const taxPaid=DB.cash.filter(x=>x.objCode==='_HQ_'&&x.order===o.code&&N(x.cashOut)>0).reduce((s,x)=>s+N(x.cashOut),0);
-    const open=Math.max(0,taxAmt-taxPaid);
-    all.push({party:'_HQ_',name:'Hải quan / Nhà nước',order:o.code,kind:'thuế NK',date:base,due:'',amount:taxAmt,open,ref:o.code+' · thuế NK'});
+    const hqCash=(hqKind)=>DB.cash.filter(x=>x.objCode==='_HQ_'&&x.order===o.code&&x.hqKind===hqKind&&N(x.cashOut)>0).reduce((s,x)=>s+N(x.cashOut),0);
+    if(calc.totalDuty>0){
+      const paid=hqCash('duty');
+      all.push({party:'_HQ_',name:'Hải quan / Nhà nước',order:o.code,kind:'thuế NK',hqKind:'duty',date:base,due:'',amount:calc.totalDuty,open:Math.max(0,calc.totalDuty-paid),ref:o.code+' · thuế NK'});
+    }
+    if(calc.totalVAT>0){
+      const paid=hqCash('vatnk');
+      all.push({party:'_HQ_',name:'Hải quan / Nhà nước',order:o.code,kind:'VAT NK',hqKind:'vatnk',date:base,due:'',amount:calc.totalVAT,open:Math.max(0,calc.totalVAT-paid),ref:o.code+' · VAT NK'});
+    }
   });
   return all;
 }
@@ -1367,12 +1374,12 @@ function deliverSO(id){
 function nextPOrderCode(){ const pre='LTT-'+todayISO().replace(/-/g,'').slice(2)+'-'; let n=1,code; do{code=pre+String(n).padStart(2,'0');n++;}while((DB.porders||[]).some(p=>p.code===code)); return code; }
 function nextOrderCode(suppCode){ const d=todayISO().replace(/-/g,'').slice(2,6); const pre='PUR-'+d+'-'+(suppCode||'ORD')+'-'; let n=1,code; do{code=pre+String(n).padStart(3,'0');n++;}while((DB.orders||[]).some(o=>o.code===code)); return code; }
 function onSupChange(){ const sup=$('#f_sup').value; const el=$('#f_code'); if(!el||!sup)return; if(!el.value||el.dataset.auto==='1'){el.value=nextOrderCode(sup);el.dataset.auto='1';} }
-function quickPayOrder(orderCode, kind, party){
+function quickPayOrder(orderCode, kind, party, hqKind=''){
   const open=payableItems().filter(it=>it.order===orderCode&&it.kind===kind&&it.party===party).reduce((a,it)=>a+it.open,0);
   if(!(open>0.5)){ toast('Không còn số tiền cần tạo lệnh',true); return; }
-  const kl=k=>k==='hàng'?'Tiền hàng':k.includes('quốc tế')?'VC quốc tế':k.includes('nội địa')?'VC nội địa':'Vận chuyển';
-  const note=(kind==='hàng'?'Thanh toán tiền hàng':'Thanh toán '+kl(kind).toLowerCase())+' đơn '+orderCode;
-  const obj={id:nid(),code:nextPOrderCode(),date:todayISO(),order:orderCode,party,
+  const kl=k=>k==='hàng'?'Tiền hàng':k==='thuế NK'?'Thuế NK (HQ)':k==='VAT NK'?'VAT NK (HQ)':k.includes('quốc tế')?'VC quốc tế':k.includes('nội địa')?'VC nội địa':'Vận chuyển';
+  const note='Thanh toán '+kl(kind).toLowerCase()+' đơn '+orderCode;
+  const obj={id:nid(),code:nextPOrderCode(),date:todayISO(),order:orderCode,party,hqKind,
     amount:Math.round(open),dueDate:'',status:'draft',paidDate:'',bankRef:'',
     approvedBy:'',approvedAt:'',rejectReason:'',note};
   DB.porders.push(obj); save();
@@ -1386,11 +1393,11 @@ function quickPayAll(orderCode){
   if(!items.length){ toast('Không có khoản nào cần thanh toán',true); return; }
   const created=[];
   items.forEach(it=>{
-    const pending=(DB.porders||[]).filter(p=>p.party===it.party&&p.order===orderCode&&(p.status==='draft'||p.status==='approved')).reduce((a,p)=>a+p.amount,0);
+    const pending=(DB.porders||[]).filter(p=>p.party===it.party&&p.order===orderCode&&(it.hqKind?p.hqKind===it.hqKind:!p.hqKind)&&(p.status==='draft'||p.status==='approved')).reduce((a,p)=>a+p.amount,0);
     const eff=Math.max(0,Math.round(it.open-pending));
     if(eff<1) return;
-    const note=(it.kind==='hàng'?'Thanh toán tiền hàng':'Thanh toán '+kl(it.kind).toLowerCase())+' đơn '+orderCode;
-    const obj={id:nid(),code:nextPOrderCode(),date:todayISO(),order:orderCode,party:it.party,
+    const note='Thanh toán '+kl(it.kind).toLowerCase()+' đơn '+orderCode;
+    const obj={id:nid(),code:nextPOrderCode(),date:todayISO(),order:orderCode,party:it.party,hqKind:it.hqKind||'',
       amount:eff,dueDate:'',status:'draft',paidDate:'',bankRef:'',
       approvedBy:'',approvedAt:'',rejectReason:'',note};
     DB.porders.push(obj); created.push(obj.code);
@@ -1546,7 +1553,7 @@ function doMarkPaid(id){
   const ref=$('#mk_ref')?$('#mk_ref').value.trim():'';
   const note=$('#mk_note')?$('#mk_note').value.trim():'Thanh toán đơn '+p.order+' ('+p.code+')';
   const objType=p.party==='_HQ_'?'Thuế':'Thương mại';
-  DB.cash.push({id:nid(),date:d,txnType:'Chuyển khoản',objType,objCode:p.party,bankRef:ref,content:note,cashIn:0,cashOut:N(p.amount),ref:p.code,order:p.order});
+  DB.cash.push({id:nid(),date:d,txnType:'Chuyển khoản',objType,objCode:p.party,hqKind:p.hqKind||'',bankRef:ref,content:note,cashIn:0,cashOut:N(p.amount),ref:p.code,order:p.order});
   p.status='paid'; p.paidDate=d; p.bankRef=ref;
   save(); closeModal2(); if($('#orderPayInfo'))fillPayInfo(p.order); else refresh();
   toast('Hoàn thành thanh toán đơn '+p.order);
@@ -2383,8 +2390,8 @@ function fillPayInfo(code, expandKind){
 
   const stColor=ps.status==='paid'?'g':ps.status==='partial'?'a':'r';
   const stLabel=ps.status==='paid'?'✓ Đã thanh toán đủ':ps.status==='partial'?'Trả một phần':ps.status==='none'?'—':'Chưa thanh toán';
-  const kindIcon=k=>k==='hàng'?'💰':k==='thuế NK'?'🏛':k.includes('quốc tế')?'🌐':k.includes('nội địa')?'🚛':'🚚';
-  const kindLabel=k=>k==='hàng'?'Tiền hàng':k==='thuế NK'?'Thuế NK (Hải quan)':k.includes('quốc tế')?'VC quốc tế':k.includes('nội địa')?'VC nội địa':'Vận chuyển';
+  const kindIcon=k=>k==='hàng'?'💰':k==='thuế NK'?'🏛':k==='VAT NK'?'🏦':k.includes('quốc tế')?'🌐':k.includes('nội địa')?'🚛':'🚚';
+  const kindLabel=k=>k==='hàng'?'Tiền hàng':k==='thuế NK'?'Thuế NK (Hải quan)':k==='VAT NK'?'VAT NK (Hải quan)':k.includes('quốc tế')?'VC quốc tế':k.includes('nội địa')?'VC nội địa':'Vận chuyển';
 
   let html=`<div class="po-panel">
     <div class="po-hd">
@@ -2397,7 +2404,7 @@ function fillPayInfo(code, expandKind){
   // Từng khoản
   items.forEach(it=>{
     const open=it.open>0.5;
-    const pending=lttList.filter(p=>p.party===it.party&&(p.status==='draft'||p.status==='approved')).reduce((a,p)=>a+p.amount,0);
+    const pending=lttList.filter(p=>p.party===it.party&&(it.hqKind?p.hqKind===it.hqKind:!p.hqKind)&&(p.status==='draft'||p.status==='approved')).reduce((a,p)=>a+p.amount,0);
     // Số tiền chưa được bao phủ bởi lệnh nào (kể cả lệnh đang chờ)
     const effectiveOpen=Math.max(0,it.open-pending);
     const needNew=effectiveOpen>0.5;
@@ -2420,7 +2427,7 @@ function fillPayInfo(code, expandKind){
         <span class="num" style="font-size:11px;min-width:28px">${pct}%</span>
         <div class="spacer"></div>
         <span class="num" style="font-size:11px">${fmt(allocated)}/${fmt(it.amount)} ₫</span>
-        ${open&&needNew&&!isExpanded?`<button class="btn sm pri" style="margin-left:8px" onclick="quickPayOrder(${JSON.stringify(code)},${JSON.stringify(it.kind)},${JSON.stringify(it.party)})">⚡ Tạo ngay</button><button class="btn sm ghost" style="margin-left:4px" onclick="fillPayInfo(${JSON.stringify(code)},${JSON.stringify(it.kind)})">✏ Tùy chỉnh</button>`:''}
+        ${open&&needNew&&!isExpanded?`<button class="btn sm pri" style="margin-left:8px" onclick="quickPayOrder(${JSON.stringify(code)},${JSON.stringify(it.kind)},${JSON.stringify(it.party)},${JSON.stringify(it.hqKind||'')})">⚡ Tạo ngay</button><button class="btn sm ghost" style="margin-left:4px" onclick="fillPayInfo(${JSON.stringify(code)},${JSON.stringify(it.kind)})">✏ Tùy chỉnh</button>`:''}
         ${!open?'<span class="tag g" style="font-size:11px;margin-left:8px">✓ Xong</span>':(!needNew?'<span class="tag a" style="font-size:11px;margin-left:8px">⏳ Đang xử lý</span>':'')}
       </div>
       ${pending>0?`<div style="padding:2px 0 4px;font-size:11px;color:var(--amber)">⏳ Lệnh đang chờ xử lý: <b>${fmt(pending)} ₫</b>${effectiveOpen>0.5?` · Chưa lập lệnh: <b>${fmt(effectiveOpen)} ₫</b>`:' · Đã phủ toàn bộ'}</div>`:''}`;
@@ -2441,7 +2448,7 @@ function fillPayInfo(code, expandKind){
         </div>
         <div class="po-form-acts">
           <button class="btn ghost" onclick="fillPayInfo(${JSON.stringify(code)})">Hủy</button>
-          <button class="btn pri" onclick="saveInlinePayOrder(${JSON.stringify(code)},${JSON.stringify(it.kind)},${JSON.stringify(it.party)})">💾 Lưu lệnh thanh toán</button>
+          <button class="btn pri" onclick="saveInlinePayOrder(${JSON.stringify(code)},${JSON.stringify(it.kind)},${JSON.stringify(it.party)},${JSON.stringify(it.hqKind||'')})">💾 Lưu lệnh thanh toán</button>
         </div>
       </div>`;
     }
@@ -2487,13 +2494,13 @@ function fillPayInfo(code, expandKind){
   box.innerHTML=html;
 }
 
-function saveInlinePayOrder(orderCode, kind, party){
+function saveInlinePayOrder(orderCode, kind, party, hqKind=''){
   const code=$('#pof_code')?$('#pof_code').value.trim():'';
   const amt=N($('#pof_amt')?$('#pof_amt').value:0);
   if(!(amt>0)){ toast('Số tiền phải > 0',true); return; }
   if(!code){ toast('Nhập mã lệnh',true); return; }
   const obj={id:nid(),code,date:$('#pof_date')?$('#pof_date').value:todayISO(),
-    order:orderCode,party,amount:amt,
+    order:orderCode,party,hqKind,amount:amt,
     dueDate:$('#pof_due')?$('#pof_due').value:'',status:'draft',
     paidDate:'',bankRef:'',approvedBy:'',approvedAt:'',rejectReason:'',
     note:$('#pof_note')?$('#pof_note').value.trim():''};
