@@ -2861,19 +2861,16 @@ function vCash(){
 }
 function cashOrderOpts(suppCode, selectedOrder){
   if(!suppCode) return '<option value="">— không gắn —</option>';
-  const items = payableItems().filter(x=>x.party===suppCode && x.open>0.5);
-  if(!items.length) return '<option value="">— không có đơn còn nợ —</option>';
-  const seen = new Set();
+  // Show ALL orders for this supplier, sorted newest first
+  const orders = DB.orders.filter(o=>o.supplier===suppCode)
+    .sort((a,b)=>(b.datePI||b.dateWH||b.dateETA||'')>(a.datePI||a.dateWH||a.dateETA||'')?1:-1);
+  if(!orders.length) return '<option value="">— không có đơn nhập —</option>';
   let opts = '<option value="">— không gắn vào đơn cụ thể —</option>';
-  items.forEach(it=>{
-    if(seen.has(it.order)) return; seen.add(it.order);
-    const ps = orderPayStatus(it.order);
-    opts += `<option value="${esc(it.order)}" ${it.order===selectedOrder?'selected':''}>${esc(it.order)} · còn ${fmt(ps.open)} ₫</option>`;
+  orders.forEach(o=>{
+    const ps = orderPayStatus(o.code);
+    const balLabel = ps.open>0.5 ? `còn ${fmt(Math.round(ps.open))} ₫` : '✓ đã trả đủ';
+    opts += `<option value="${esc(o.code)}" ${o.code===selectedOrder?'selected':''}>${esc(o.code)} · ${balLabel}</option>`;
   });
-  // Nếu đơn đang chọn không còn trong items (đã trả đủ) nhưng vẫn cần hiển thị
-  if(selectedOrder && !seen.has(selectedOrder)){
-    opts += `<option value="${esc(selectedOrder)}" selected>${esc(selectedOrder)}</option>`;
-  }
   return opts;
 }
 function cashPartyChange(){
