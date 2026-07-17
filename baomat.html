@@ -864,11 +864,10 @@ function vQuotes(){
   $('#view').innerHTML=html;
 }
 function nextQuoteCode(cus){
-  const d=todayISO().split('-');
-  const ddmmyyyy=d[2]+d[1]+d[0];
-  const pre='GB-'+ddmmyyyy+'-'+(cus||'')+'-';
-  let n=1, code;
-  do{ code=pre+String(n).padStart(2,'0'); n++; }while((DB.quotes||[]).some(q=>q.code===code));
+  const d=todayISO(); // YYYY-MM-DD
+  const dateStr=d.slice(2,4)+d.slice(5,7)+d.slice(8,10); // YYMMDD
+  let n=(DB.quotes||[]).length+1, code;
+  do{ code=String(n).padStart(2,'0')+'-'+dateStr+(cus||'')+'-ONC'; n++; }while((DB.quotes||[]).some(q=>q.code===code));
   return code;
 }
 function qAutoCode(cus, isEdit){
