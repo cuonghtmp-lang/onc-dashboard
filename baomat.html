@@ -891,7 +891,7 @@ function editQuote(id){
       <div class="fld"><label>Trạng thái</label><select id="q_status">${stOpts}</select><div class="hint">Nháp/Đã gửi giữ chỗ tồn. Chốt/Hủy không giữ chỗ.</div></div>
       <div class="fld full"><label>Về việc / Tiêu đề</label><input id="q_subject" value="${esc(q.subject||'')}" placeholder="VD: Báo giá linh kiện khuôn mẫu"></div>
       <div class="fld full"><label>Ghi chú</label><input id="q_note" value="${esc(q.note||'')}"></div>
-      <div class="fld full"><label>Thanh toán (tùy chỉnh cho báo giá này)</label><input id="q_pay" value="${esc(q.paymentNote||s.termPayment||'Bằng tiền mặt/chuyển khoản')}" placeholder="VD: Bằng tiền mặt/chuyển khoản trước khi giao hàng"></div>
+      <div class="fld full"><label>Thanh toán (tùy chỉnh cho báo giá này)</label><input id="q_pay" value="${esc(q.paymentNote||DB.settings.termPayment||'Bằng tiền mặt/chuyển khoản')}" placeholder="VD: Bằng tiền mặt/chuyển khoản trước khi giao hàng"></div>
       <div class="section-t">Sản phẩm báo giá</div>
       <div class="full" id="qLineEditor"></div>
       <div class="full" id="qSummary" style="margin-top:8px"></div>
