@@ -256,6 +256,9 @@ a{color:var(--blue);text-decoration:none}
 .pq-terms ol{margin:0;padding-left:18px;font-size:11.5px}
 .pq-terms li{margin-bottom:3px}
 .pq-bank,.pq-note{font-size:11.5px;margin-top:6px}
+.pq-bank-tbl{border-collapse:collapse;margin-top:4px;width:auto}
+.pq-bank-tbl td{padding:2px 12px 2px 0;vertical-align:top}
+.pq-bank-tbl td:first-child{color:#555;white-space:nowrap;min-width:200px}
 .pq-sign{display:flex;justify-content:space-between;margin-top:26px;text-align:center;page-break-inside:avoid}
 .pq-sign-col{width:46%}
 .pq-sign-r{font-weight:700;font-size:12px;color:#13203a}
@@ -463,11 +466,12 @@ function normalizeDB(){
   const s=DB.settings||(DB.settings={}); const defs={
     exchangeRate:26500,finRate:0,sgaRate:0,contRate:0,margin:0.3,vatSale:0.1,custDays:30,suppDays:0,
     periodStart:'2026-03-01',periodEnd:'2026-10-01',company:'Công ty TNHH Linh Kiện và Giải Pháp Khuôn Mẫu ONC',
-    address:'Hải Phòng, Việt Nam',taxCode:'',phone:'',email:'',website:'',bank:'',repName:'',repTitle:'Giám đốc',logo:'',
+    address:'Số 101/55/29/46 Lạch Tray, Phường Lê Chân, Thành phố Hải Phòng, Việt Nam',taxCode:'',phone:'',email:'',website:'',bank:'',
+    bankBeneficiary:'CTY TNHH LK VA GP KHUON MAU ONC',bankAccount:'80066868',bankName:'Ngân hàng TMCP Kỹ Thương Việt Nam (TCB)- Chi nhánh Tô Hiệu',
+    repName:'',repTitle:'Giám đốc',logo:'',
     termValidity:'Báo giá có hiệu lực trong vòng 15 ngày kể từ ngày báo giá.',
     termDelivery:'Thời gian giao hàng theo thỏa thuận sau khi xác nhận đơn hàng.',
-    termPayment:'Thanh toán bằng chuyển khoản trong vòng 30 ngày kể từ ngày nhận hàng và hóa đơn.',
-    termWarranty:'Hàng chính hãng, bảo hành theo tiêu chuẩn nhà sản xuất.',lockDate:'',
+    termPayment:'Bằng tiền mặt/chuyển khoản',lockDate:'',
     supabaseUrl:'https://cwswsqvtahfeqgpznsgy.supabase.co',
     supabaseKey:'sb_publishable_ajJ4-1PpV4aO_8W0gbVjQA_ia10O6CU',
     driveScriptUrl:'',lastDriveBackup:''};
@@ -887,6 +891,7 @@ function editQuote(id){
       <div class="fld"><label>Trạng thái</label><select id="q_status">${stOpts}</select><div class="hint">Nháp/Đã gửi giữ chỗ tồn. Chốt/Hủy không giữ chỗ.</div></div>
       <div class="fld full"><label>Về việc / Tiêu đề</label><input id="q_subject" value="${esc(q.subject||'')}" placeholder="VD: Báo giá linh kiện khuôn mẫu"></div>
       <div class="fld full"><label>Ghi chú</label><input id="q_note" value="${esc(q.note||'')}"></div>
+      <div class="fld full"><label>Thanh toán (tùy chỉnh cho báo giá này)</label><input id="q_pay" value="${esc(q.paymentNote||s.termPayment||'Bằng tiền mặt/chuyển khoản')}" placeholder="VD: Bằng tiền mặt/chuyển khoản trước khi giao hàng"></div>
       <div class="section-t">Sản phẩm báo giá</div>
       <div class="full" id="qLineEditor"></div>
       <div class="full" id="qSummary" style="margin-top:8px"></div>
@@ -894,7 +899,7 @@ function editQuote(id){
       const cus=$('#q_cus').value; if(!cus){bad('q_cus');return false;}
       const lines=QDRAFT.filter(l=>l.product&&N(l.qty)>0).map(l=>({product:l.product,invoiceName:l.invoiceName||'',qty:N(l.qty),price:N(l.price)}));
       const autoCode=nextQuoteCode(cus);
-      const obj={id:id||nid(),code:$('#q_code').value.trim()||autoCode,date:$('#q_date').value,customer:cus,validUntil:$('#q_valid').value,status:$('#q_status').value,subject:$('#q_subject').value.trim(),attn:$('#q_attn').value.trim(),note:$('#q_note').value.trim(),lines};
+      const obj={id:id||nid(),code:$('#q_code').value.trim()||autoCode,date:$('#q_date').value,customer:cus,validUntil:$('#q_valid').value,status:$('#q_status').value,subject:$('#q_subject').value.trim(),attn:$('#q_attn').value.trim(),note:$('#q_note').value.trim(),paymentNote:$('#q_pay').value.trim(),lines};
       if(id)Object.assign(DB.quotes.find(x=>x.id===id),obj);else DB.quotes.push(obj);
       save();closeModal();refresh();toast('Đã lưu báo giá '+obj.code);
     },'wide');
@@ -972,11 +977,11 @@ function printQuote(id){
   let rows='',total=0;
   (q.lines||[]).forEach((l,i)=>{ const p=prodOf(l.product); const amt=N(l.qty)*N(l.price); total+=amt;
     const dispName=l.invoiceName||(p?p.groupVI:'');
-    rows+=`<tr><td class="ce">${i+1}</td><td class="cd">${esc(l.product)}</td><td>${esc(dispName)}<div class="en">${esc(p?p.groupEN:'')}</div></td><td class="ce">${esc(p?p.unit:'')}</td><td class="rr">${fmt(l.qty)}</td><td class="rr">${fmt(l.price)}</td><td class="rr">${fmt(amt)}</td></tr>`; });
+    rows+=`<tr><td class="ce">${i+1}</td><td class="cd">${esc(l.product)}</td><td>${esc(dispName)}</td><td class="ce">${esc(p?p.unit:'')}</td><td class="rr">${fmt(l.qty)}</td><td class="rr">${fmt(l.price)}</td><td class="rr">${fmt(amt)}</td></tr>`; });
   if(!(q.lines||[]).length) rows=`<tr><td colspan="7" class="ce" style="color:#888">(chưa có sản phẩm)</td></tr>`;
   const vat=total*N(s.vatSale); const grand=total+vat;
   const contact=[s.phone?'ĐT: '+esc(s.phone):'',s.email?'Email: '+esc(s.email):'',s.website?esc(s.website):''].filter(Boolean).join(' · ');
-  const terms=[['Hiệu lực / Validity',s.termValidity],['Giao hàng / Delivery',s.termDelivery],['Thanh toán / Payment',s.termPayment],['Bảo hành / Warranty',s.termWarranty]]
+  const terms=[['Hiệu lực / Validity',s.termValidity],['Giao hàng / Delivery',s.termDelivery],['Thanh toán / Payment',q.paymentNote||s.termPayment]]
     .filter(t=>t[1]).map((t,i)=>`<li><b>${esc(t[0])}:</b> ${esc(t[1])}</li>`).join('');
   $('#printArea').innerHTML=`<div class="pq">
     <div class="pq-head">
@@ -1026,7 +1031,7 @@ function printQuote(id){
     <div class="pq-words"><b>Bằng chữ:</b> <i>${docTienBangChu(grand)}</i></div>
 
     <div class="pq-terms"><div class="pq-terms-t">ĐIỀU KHOẢN / TERMS &amp; CONDITIONS</div><ol>${terms}</ol></div>
-    ${s.bank?`<div class="pq-bank"><b>Thông tin thanh toán / Bank:</b> ${esc(s.bank)}</div>`:''}
+    ${(s.bankBeneficiary||s.bankAccount)?`<div class="pq-bank"><b>Thông tin tài khoản ngân hàng / Bank Account:</b><table class="pq-bank-tbl"><tr><td>Người thụ hưởng / Beneficiary</td><td><b>${esc(s.bankBeneficiary||'')}</b></td></tr><tr><td>Số TK / Account No.</td><td><b>${esc(s.bankAccount||'')}</b> (VND)</td></tr><tr><td>Ngân hàng / Bank</td><td>${esc(s.bankName||'')}</td></tr></table></div>`:''}
     ${q.note?`<div class="pq-note"><b>Ghi chú / Note:</b> ${esc(q.note)}</div>`:''}
 
     <div class="pq-sign">
@@ -3074,7 +3079,9 @@ function vSettings(){
     <div class="fld"><label>Điện thoại</label><input id="s_phone" value="${esc(s.phone||'')}"></div>
     <div class="fld"><label>Email</label><input id="s_email" value="${esc(s.email||'')}"></div>
     <div class="fld"><label>Website</label><input id="s_web" value="${esc(s.website||'')}"></div>
-    <div class="fld full"><label>Thông tin ngân hàng (số TK, ngân hàng, chủ TK)</label><input id="s_bank" value="${esc(s.bank||'')}"></div>
+    <div class="fld full"><label>Người thụ hưởng / Beneficiary</label><input id="s_bankben" value="${esc(s.bankBeneficiary||'')}"></div>
+    <div class="fld"><label>Số tài khoản (VND)</label><input id="s_bankacc" value="${esc(s.bankAccount||'')}"></div>
+    <div class="fld full"><label>Tên ngân hàng</label><input id="s_bankname" value="${esc(s.bankName||'')}"></div>
     <div class="fld"><label>Người đại diện ký</label><input id="s_rep" value="${esc(s.repName||'')}"></div>
     <div class="fld"><label>Chức danh</label><input id="s_reptitle" value="${esc(s.repTitle||'Giám đốc')}"></div>
     <div class="fld full"><label>Logo công ty (tùy chọn)</label>
@@ -3086,8 +3093,7 @@ function vSettings(){
     <div class="section-t">Điều khoản mặc định trên báo giá</div>
     <div class="fld full"><label>Hiệu lực</label><input id="s_tv" value="${esc(s.termValidity||'')}"></div>
     <div class="fld full"><label>Giao hàng</label><input id="s_td" value="${esc(s.termDelivery||'')}"></div>
-    <div class="fld full"><label>Thanh toán</label><input id="s_tp" value="${esc(s.termPayment||'')}"></div>
-    <div class="fld full"><label>Bảo hành</label><input id="s_tw" value="${esc(s.termWarranty||'')}"></div>
+    <div class="fld full"><label>Thanh toán (mặc định)</label><input id="s_tp" value="${esc(s.termPayment||'')}"></div>
   </div></div></div>
 
   <div class="panel"><div class="ph"><h2>Khóa kỳ kế toán</h2><div class="spacer"></div><span class="tag n">Toàn vẹn số liệu</span></div><div style="padding:18px 20px"><div class="grid">
@@ -3140,8 +3146,9 @@ function saveSettings(){
   if($('#s_driveurl')) s.driveScriptUrl=$('#s_driveurl').value.trim();
   s.company=$('#s_company').value.trim(); s.address=$('#s_addr').value.trim(); s.taxCode=$('#s_tax').value.trim();
   s.phone=$('#s_phone').value.trim(); s.email=$('#s_email').value.trim(); s.website=$('#s_web').value.trim();
-  s.bank=$('#s_bank').value.trim(); s.repName=$('#s_rep').value.trim(); s.repTitle=$('#s_reptitle').value.trim();
-  s.termValidity=$('#s_tv').value.trim(); s.termDelivery=$('#s_td').value.trim(); s.termPayment=$('#s_tp').value.trim(); s.termWarranty=$('#s_tw').value.trim();
+  s.bankBeneficiary=$('#s_bankben').value.trim(); s.bankAccount=$('#s_bankacc').value.trim(); s.bankName=$('#s_bankname').value.trim();
+  s.repName=$('#s_rep').value.trim(); s.repTitle=$('#s_reptitle').value.trim();
+  s.termValidity=$('#s_tv').value.trim(); s.termDelivery=$('#s_td').value.trim(); s.termPayment=$('#s_tp').value.trim();
   s.lockDate=$('#s_lock').value||'';
   save(); toast('Đã lưu thiết lập'); refresh();
 }
